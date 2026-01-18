@@ -7,6 +7,7 @@ Fetches data from two SmartThings sensors and visualizes trends
 import os
 import streamlit as st
 import pandas as pd
+import numpy as np
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
@@ -235,6 +236,99 @@ def import_historical_data():
     
     return len(activities), len(combined_df)
 
+# This is a very naive implementation.  Not something you'd want to take
+# to a production setting.
+def duration_weighted_average(sensor_df, target_time, window_hours):
+    """Calculate duration-weighted average for a specific time point"""
+    window_delta = pd.Timedelta(hours=window_hours)
+    start_time = target_time - window_delta
+    end_time = target_time + window_delta
+    
+    # Get readings within the window
+    window_data = sensor_df[
+        (sensor_df["datetime"] >= start_time) & 
+        (sensor_df["datetime"] <= end_time)
+    ].sort_values("datetime").copy()
+    
+    if len(window_data) == 0:
+        return np.nan
+    
+    if len(window_data) == 1:
+        return window_data.iloc[0]["value"]
+    
+    # Calculate duration weights
+    weights = []
+    values = []
+    
+    for i in range(len(window_data)):
+        current_time = window_data.iloc[i]["datetime"]
+        current_value = window_data.iloc[i]["value"]
+        
+        # Duration is time until next reading (or end of window)
+        if i < len(window_data) - 1:
+            next_time = window_data.iloc[i + 1]["datetime"]
+            duration = (next_time - current_time).total_seconds()
+        else:
+            duration = (end_time - current_time).total_seconds()
+        
+        # Also consider time since previous reading (or start of window)
+        if i > 0:
+            prev_time = window_data.iloc[i - 1]["datetime"]
+            prev_duration = (current_time - prev_time).total_seconds()
+            duration = (duration + prev_duration) / 2
+        
+        weights.append(duration)
+        values.append(current_value)
+    
+    # Calculate weighted average
+    weights = np.array(weights)
+    values = np.array(values)
+    
+    if weights.sum() == 0:
+        return np.mean(values)
+    
+    return np.average(values, weights=weights)
+
+
+def transform_to_timeseries(df, resolution_minutes=10):
+    """Transform data to regular 10-minute intervals with duration-weighted averaging"""
+    if df.empty:
+        return pd.DataFrame(columns=["sensor_name", "datetime", "value"])
+    
+    # Get time range
+    min_time = df["datetime"].min()
+    max_time = df["datetime"].max()
+    
+    # Create 10-minute intervals aligned on the hour
+    start_time = min_time.floor(f"{resolution_minutes}min")
+    end_time = max_time.ceil(f"{resolution_minutes}min")
+    time_slots = pd.date_range(start=start_time, end=end_time, freq=f"{resolution_minutes}min")
+    
+    transformed_data = []
+    
+    # Process each sensor separately
+    for sensor_name in df["sensor_name"].unique():
+        sensor_df = df[df["sensor_name"] == sensor_name].sort_values("datetime")
+        
+        # Determine window size based on sensor type
+        if "Temperature" in sensor_name:
+            window_hours = 1.0  # 1 hour on either side
+        else:  # Humidity
+            window_hours = 2.0  # 2 hours on either side
+        
+        # Calculate weighted average for each time slot
+        for target_time in time_slots:
+            avg_value = duration_weighted_average(sensor_df, target_time, window_hours)
+            
+            if not np.isnan(avg_value):
+                transformed_data.append({
+                    "sensor_name": sensor_name,
+                    "datetime": target_time,
+                    "value": avg_value
+                })
+    
+    return pd.DataFrame(transformed_data)
+
 
 def load_data():
     """Load historical data from CSV (last 21 days max)"""
@@ -261,51 +355,88 @@ def load_data():
         return pd.DataFrame(columns=["sensor_name", "datetime", "value"])
 
 
-def create_dual_axis_chart(df):
+def create_dual_axis_chart(raw_df, filtered_df, display_mode):
     """Create a chart with dual y-axes for temperature and humidity"""
-    if df.empty:
+    # Determine which data to display
+    show_raw = display_mode in ["Raw Data", "Both"]
+    show_filtered = display_mode in ["Filtered Data", "Both"]
+    
+    if raw_df.empty and filtered_df.empty:
         st.info("No data available yet. Click 'Fetch New Data' to start collecting readings.")
         return
     
     # Create figure with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # Get unique sensors
-    sensors = df["sensor_name"].unique()
-    
     # Color scheme
     colors = {
-        "Temperature": {"color": "rgb(255, 99, 71)", "dash": None},
-        "Humidity": {"color": "rgb(54, 162, 235)", "dash": None}
+        "Temperature": {"raw": "rgba(255, 99, 71, 0.4)", "filtered": "rgb(255, 99, 71)"},
+        "Humidity": {"raw": "rgba(54, 162, 235, 0.4)", "filtered": "rgb(54, 162, 235)"}
     }
     
-    for sensor in sensors:
-        sensor_data = df[df["sensor_name"] == sensor].sort_values("datetime")
-        
-        if "Temperature" in sensor:
-            fig.add_trace(
-                go.Scatter(
-                    x=sensor_data["datetime"],
-                    y=sensor_data["value"],
-                    name=sensor,
-                    mode="lines+markers",
-                    line=dict(color=colors["Temperature"]["color"]),
-                    marker=dict(size=4)
-                ),
-                secondary_y=False
-            )
-        elif "Humidity" in sensor:
-            fig.add_trace(
-                go.Scatter(
-                    x=sensor_data["datetime"],
-                    y=sensor_data["value"],
-                    name=sensor,
-                    mode="lines+markers",
-                    line=dict(color=colors["Humidity"]["color"]),
-                    marker=dict(size=4)
-                ),
-                secondary_y=True
-            )
+    # Add raw data traces
+    if show_raw and not raw_df.empty:
+        sensors = raw_df["sensor_name"].unique()
+        for sensor in sensors:
+            sensor_data = raw_df[raw_df["sensor_name"] == sensor].sort_values("datetime")
+            
+            if "Temperature" in sensor:
+                fig.add_trace(
+                    go.Scatter(
+                        x=sensor_data["datetime"],
+                        y=sensor_data["value"],
+                        name=f"{sensor} (raw)",
+                        mode="markers" if show_filtered else "lines+markers",
+                        line=dict(color=colors["Temperature"]["raw"], width=1) if not show_filtered else None,
+                        marker=dict(size=3, color=colors["Temperature"]["raw"]),
+                        showlegend=True
+                    ),
+                    secondary_y=False
+                )
+            elif "Humidity" in sensor:
+                fig.add_trace(
+                    go.Scatter(
+                        x=sensor_data["datetime"],
+                        y=sensor_data["value"],
+                        name=f"{sensor} (raw)",
+                        mode="markers" if show_filtered else "lines+markers",
+                        line=dict(color=colors["Humidity"]["raw"], width=1) if not show_filtered else None,
+                        marker=dict(size=3, color=colors["Humidity"]["raw"]),
+                        showlegend=True
+                    ),
+                    secondary_y=True
+                )
+    
+    # Add filtered data traces
+    if show_filtered and not filtered_df.empty:
+        sensors = filtered_df["sensor_name"].unique()
+        for sensor in sensors:
+            sensor_data = filtered_df[filtered_df["sensor_name"] == sensor].sort_values("datetime")
+            
+            if "Temperature" in sensor:
+                fig.add_trace(
+                    go.Scatter(
+                        x=sensor_data["datetime"],
+                        y=sensor_data["value"],
+                        name=f"{sensor} (filtered)",
+                        mode="lines",
+                        line=dict(color=colors["Temperature"]["filtered"], width=2),
+                        showlegend=True
+                    ),
+                    secondary_y=False
+                )
+            elif "Humidity" in sensor:
+                fig.add_trace(
+                    go.Scatter(
+                        x=sensor_data["datetime"],
+                        y=sensor_data["value"],
+                        name=f"{sensor} (filtered)",
+                        mode="lines",
+                        line=dict(color=colors["Humidity"]["filtered"], width=2),
+                        showlegend=True
+                    ),
+                    secondary_y=True
+                )
     
     # Update axes
     fig.update_xaxes(title_text="Time")
@@ -367,37 +498,55 @@ with col3:
 with col1:
     st.subheader("Time Series")
 
-# Load and display data
-df = load_data()
+# Display mode selector
+display_mode = st.radio(
+    "Display Mode",
+    ["Raw Data", "Filtered Data", "Both"],
+    horizontal=True,
+    help="Raw: Original readings | Filtered: 10-min intervals with duration-weighted averaging | Both: Show both"
+)
 
-if not df.empty:
-    # Display chart
-    create_dual_axis_chart(df)
+# Load and display data
+raw_df = load_data()
+
+if not raw_df.empty:
+    # Transform data if filtered view is requested
+    if display_mode in ["Filtered Data", "Both"]:
+        with st.spinner("Transforming data..."):
+            filtered_df = transform_to_timeseries(raw_df)
+    else:
+        filtered_df = pd.DataFrame(columns=["sensor_name", "datetime", "value"])
     
-    # Show statistics
+    # Display chart
+    create_dual_axis_chart(raw_df, filtered_df, display_mode)
+    
+    # Show statistics (use filtered data if available, otherwise raw)
+    stats_df = filtered_df if not filtered_df.empty else raw_df
+    
     col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
     
     with col_stat1:
-        st.metric("Total Readings", len(df))
+        st.metric("Total Readings", len(raw_df))
     
     with col_stat2:
-        if not df.empty:
-            latest = df.groupby("sensor_name").last()
-            st.metric("Last Update", df["datetime"].max().strftime("%m/%d %H:%M"))
+        if not raw_df.empty:
+            latest = raw_df.groupby("sensor_name").last()
+            st.metric("Last Update", raw_df["datetime"].max().strftime("%m/%d %H:%M"))
     
     with col_stat3:
-        temp_data = df[df["sensor_name"].str.contains("Temperature")]
+        temp_data = stats_df[stats_df["sensor_name"].str.contains("Temperature")]
         if not temp_data.empty:
             st.metric("Avg Temperature", f"{temp_data['value'].mean():.1f}°F")
     
     with col_stat4:
-        humidity_data = df[df["sensor_name"].str.contains("Humidity")]
+        humidity_data = stats_df[stats_df["sensor_name"].str.contains("Humidity")]
         if not humidity_data.empty:
             st.metric("Avg Humidity", f"{humidity_data['value'].mean():.1f}%")
     
     # Recent readings table
     st.subheader("Recent Readings")
-    recent = df.tail(20).sort_values("datetime", ascending=False)
+    table_df = filtered_df if display_mode == "Filtered Data" and not filtered_df.empty else raw_df
+    recent = table_df.tail(20).sort_values("datetime", ascending=False)
     recent["datetime"] = recent["datetime"].dt.strftime("%Y-%m-%d %H:%M:%S")
     st.dataframe(recent, use_container_width=True, hide_index=True)
     
