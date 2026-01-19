@@ -645,7 +645,7 @@ filter_query = f"PartitionKey eq '{sensor_name}' and RowKey lt '{cutoff_rowkey}'
 
 - [x] Phase 0: Archive current implementation ✅
 - [x] Phase 1: Project scaffolding & models ✅
-- [ ] Phase 2: Storage layer (local)
+- [x] Phase 2: Storage layer (local) ✅
 - [ ] Phase 3: Azure Table Storage
 - [ ] Phase 4: Webhook routes
 - [ ] Phase 5: SmartThings service
