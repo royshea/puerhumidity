@@ -644,7 +644,7 @@ filter_query = f"PartitionKey eq '{sensor_name}' and RowKey lt '{cutoff_rowkey}'
 ## Current Progress
 
 - [x] Phase 0: Archive current implementation ✅
-- [ ] Phase 1: Project scaffolding & models
+- [x] Phase 1: Project scaffolding & models ✅
 - [ ] Phase 2: Storage layer (local)
 - [ ] Phase 3: Azure Table Storage
 - [ ] Phase 4: Webhook routes

@@ -1,0 +1,24 @@
+{
+  "lifecycle": "EVENT",
+  "eventData": {
+    "authToken": "test-auth-token",
+    "installedApp": {
+      "installedAppId": "55713660-1f57-4338-81e0-3c45479b2279",
+      "locationId": "9ec8c9fc-3af2-464f-b917-d0403ab0c4bb"
+    },
+    "events": [
+      {
+        "eventType": "DEVICE_EVENT",
+        "deviceEvent": {
+          "subscriptionName": "temperature_sensors",
+          "deviceId": "9a52da52-a841-4883-b91e-8d29b9a6d01d",
+          "componentId": "main",
+          "capability": "temperatureMeasurement",
+          "attribute": "temperature",
+          "value": 72,
+          "stateChange": true
+        }
+      }
+    ]
+  }
+}

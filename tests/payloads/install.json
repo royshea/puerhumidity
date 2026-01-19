@@ -1,0 +1,12 @@
+{
+  "lifecycle": "INSTALL",
+  "installData": {
+    "authToken": "test-auth-token",
+    "refreshToken": "test-refresh-token",
+    "installedApp": {
+      "installedAppId": "55713660-1f57-4338-81e0-3c45479b2279",
+      "locationId": "9ec8c9fc-3af2-464f-b917-d0403ab0c4bb",
+      "config": {}
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "lifecycle": "PING",
+  "pingData": {
+    "challenge": "test-challenge-12345"
+  }
+}
