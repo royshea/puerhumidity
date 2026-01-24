@@ -1,5 +1,6 @@
 """Tests for Flask application factory."""
 
+import pytest
 from flask import Flask
 
 from app import create_app
@@ -23,11 +24,17 @@ class TestCreateApp:
         assert app.config["DEBUG"] is True
 
     def test_create_app_production(self) -> None:
-        """Test creating app with production config."""
-        app = create_app("production")
+        """Test creating app with production config (skipped without Azurite)."""
+        import os
 
-        assert isinstance(app, Flask)
-        assert app.config["DEBUG"] is False
+        # Skip if connection string not set (requires Azurite to be running)
+        if not os.environ.get("AZURE_STORAGE_CONNECTION_STRING"):
+            pytest.skip("AZURE_STORAGE_CONNECTION_STRING not set - skipping production test")
+
+        app_instance = create_app("production")
+
+        assert isinstance(app_instance, Flask)
+        assert app_instance.config["DEBUG"] is False
 
     def test_health_endpoint_registered(self) -> None:
         """Test that health endpoint is registered."""

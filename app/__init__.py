@@ -2,7 +2,9 @@
 
 from flask import Flask
 
-from app.config import Config, DevelopmentConfig, ProductionConfig
+from app.config import DevelopmentConfig, ProductionConfig
+from app.storage import init_storage
+from app.storage.base import StorageBase
 
 
 def create_app(config_name: str | None = None) -> Flask:
@@ -22,9 +24,39 @@ def create_app(config_name: str | None = None) -> Flask:
     else:
         app.config.from_object(DevelopmentConfig)
 
+    # Initialize storage based on configuration
+    storage = _create_storage(app)
+    init_storage(storage)
+
     # Register blueprints
     from app.routes import register_blueprints
 
     register_blueprints(app)
 
     return app
+
+
+def _create_storage(app: Flask) -> StorageBase:
+    """Create the appropriate storage backend based on configuration.
+
+    Args:
+        app: Flask application with configuration loaded.
+
+    Returns:
+        Configured storage backend.
+    """
+    storage_type = app.config.get("STORAGE_TYPE", "local")
+
+    if storage_type == "azure":
+        from app.storage.table_storage import TableStorage
+
+        connection_string = app.config.get("AZURE_STORAGE_CONNECTION_STRING")
+        if not connection_string:
+            raise ValueError("AZURE_STORAGE_CONNECTION_STRING required for azure storage")
+        table_name = app.config.get("AZURE_TABLE_NAME", "sensorreadings")
+        return TableStorage(connection_string, table_name)
+    else:
+        from app.storage.local_storage import LocalStorage
+
+        data_path = app.config.get("LOCAL_DATA_PATH", "data/humidity_data.csv")
+        return LocalStorage(data_path)
