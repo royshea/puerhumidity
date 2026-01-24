@@ -8,6 +8,7 @@ from flask import Blueprint, current_app, jsonify, request
 from flask.typing import ResponseReturnValue
 
 from app.models import SensorReading
+from app.services import SmartThingsService
 from app.storage import get_storage
 
 webhook_bp = Blueprint("webhook", __name__)
@@ -84,10 +85,31 @@ def _handle_install(data: dict[str, Any]) -> ResponseReturnValue:
 
     Returns:
         JSON response with installData echoed back.
-
-    TODO: Implement subscription creation in Phase 5.
     """
-    # Placeholder - subscription creation will be implemented in Phase 5
+    install_data = data.get("installData", {})
+    auth_token = install_data.get("authToken")
+    installed_app = install_data.get("installedApp", {})
+    installed_app_id = installed_app.get("installedAppId")
+    location_id = installed_app.get("locationId")
+
+    if auth_token and installed_app_id and location_id:
+        try:
+            api_base = current_app.config.get(
+                "SMARTTHINGS_API_BASE", "https://api.smartthings.com/v1"
+            )
+            service = SmartThingsService(api_base)
+            service.create_subscriptions(installed_app_id, location_id, auth_token)
+            logger.info("Subscriptions created for installed app %s", installed_app_id)
+        except Exception as e:
+            logger.error("Failed to create subscriptions: %s", e)
+    else:
+        logger.warning(
+            "Missing required install data: auth_token=%s, app_id=%s, location_id=%s",
+            bool(auth_token),
+            bool(installed_app_id),
+            bool(location_id),
+        )
+
     return jsonify({"installData": {}})
 
 
@@ -99,10 +121,36 @@ def _handle_update(data: dict[str, Any]) -> ResponseReturnValue:
 
     Returns:
         JSON response with updateData echoed back.
-
-    TODO: Implement subscription update in Phase 5.
     """
-    # Placeholder - subscription update will be implemented in Phase 5
+    update_data = data.get("updateData", {})
+    # NOTE: SmartThings docs show authToken at top-level for UPDATE, but the
+    # working archive used updateData.authToken. If subscriptions fail during
+    # UPDATE, try: auth_token = update_data.get("authToken")
+    auth_token = data.get("authToken")
+    installed_app = update_data.get("installedApp", {})
+    installed_app_id = installed_app.get("installedAppId")
+    location_id = installed_app.get("locationId")
+
+    if auth_token and installed_app_id and location_id:
+        try:
+            api_base = current_app.config.get(
+                "SMARTTHINGS_API_BASE", "https://api.smartthings.com/v1"
+            )
+            service = SmartThingsService(api_base)
+            # Delete existing and recreate (handles config changes)
+            service.delete_all_subscriptions(installed_app_id, auth_token)
+            service.create_subscriptions(installed_app_id, location_id, auth_token)
+            logger.info("Subscriptions updated for installed app %s", installed_app_id)
+        except Exception as e:
+            logger.error("Failed to update subscriptions: %s", e)
+    else:
+        logger.warning(
+            "Missing required update data: auth_token=%s, app_id=%s, location_id=%s",
+            bool(auth_token),
+            bool(installed_app_id),
+            bool(location_id),
+        )
+
     return jsonify({"updateData": {}})
 
 
