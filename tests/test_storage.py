@@ -274,3 +274,288 @@ class TestLocalStorage:
 
         with pytest.raises((KeyError, ValueError)):
             storage.get_all_readings()
+
+
+class TestTableStorage:
+    """Tests for TableStorage Azure Table Storage implementation.
+
+    These tests require Azurite (Azure Storage Emulator) to be running:
+        azurite --silent --location .azurite
+
+    Tests are skipped if Azurite is not available.
+    """
+
+    AZURITE_CONNECTION_STRING = (
+        "DefaultEndpointsProtocol=http;"
+        "AccountName=devstoreaccount1;"
+        "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+        "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+    )
+
+    @pytest.fixture
+    def table_storage(self) -> "TableStorage | None":
+        """Create a TableStorage instance connected to Azurite.
+
+        Returns None if Azurite is not available.
+        """
+        from app.storage.table_storage import TableStorage
+
+        # Use a unique table name for each test run to avoid conflicts
+        import uuid
+
+        table_name = f"test{uuid.uuid4().hex[:8]}"
+
+        try:
+            storage = TableStorage(self.AZURITE_CONNECTION_STRING, table_name)
+            return storage
+        except Exception:
+            pytest.skip("Azurite not available - skipping Table Storage tests")
+            return None
+
+    @pytest.fixture
+    def cleanup_table(self, table_storage: "TableStorage | None"):
+        """Cleanup fixture to delete test table after test."""
+        yield table_storage
+        if table_storage is not None:
+            try:
+                from azure.data.tables import TableServiceClient
+
+                service = TableServiceClient.from_connection_string(
+                    self.AZURITE_CONNECTION_STRING
+                )
+                service.delete_table(table_storage.table_name)
+            except Exception:
+                pass  # Best effort cleanup
+
+    def test_implements_storage_base(self, table_storage: "TableStorage", cleanup_table) -> None:
+        """Test that TableStorage implements StorageBase interface."""
+        from app.storage.base import StorageBase
+
+        assert isinstance(table_storage, StorageBase)
+
+    def test_write_and_read_reading(self, table_storage: "TableStorage", cleanup_table) -> None:
+        """Test writing and reading a single reading."""
+        now = datetime.now(timezone.utc)
+        reading = SensorReading(
+            device_id="device-123",
+            device_label="TestSensor",
+            reading_type="humidity",
+            value=65.0,
+            timestamp=now,
+        )
+
+        table_storage.write_reading(reading)
+
+        readings = table_storage.get_all_readings()
+        assert len(readings) == 1
+        assert readings[0].device_id == reading.device_id
+        assert readings[0].value == reading.value
+
+    def test_write_readings_batch(self, table_storage: "TableStorage", cleanup_table) -> None:
+        """Test writing multiple readings at once."""
+        now = datetime.now(timezone.utc)
+        readings = [
+            SensorReading(
+                device_id="device-1",
+                device_label="Sensor1",
+                reading_type="humidity",
+                value=60.0 + i,
+                timestamp=now + timedelta(hours=i),
+            )
+            for i in range(5)
+        ]
+
+        table_storage.write_readings(readings)
+
+        result = table_storage.get_all_readings()
+        assert len(result) == 5
+
+    def test_get_readings_filters_by_sensor_name(
+        self, table_storage: "TableStorage", cleanup_table
+    ) -> None:
+        """Test that get_readings filters by sensor name."""
+        now = datetime.now(timezone.utc)
+        readings = [
+            SensorReading(
+                device_id="device-1",
+                device_label="PuerHumidity",
+                reading_type="humidity",
+                value=65.0,
+                timestamp=now,
+            ),
+            SensorReading(
+                device_id="device-1",
+                device_label="PuerHumidity",
+                reading_type="temperature",
+                value=72.0,
+                timestamp=now,
+            ),
+            SensorReading(
+                device_id="device-2",
+                device_label="ChestHumidity",
+                reading_type="humidity",
+                value=55.0,
+                timestamp=now,
+            ),
+        ]
+        table_storage.write_readings(readings)
+
+        humidity_readings = table_storage.get_readings("PuerHumidity-Humidity")
+        assert len(humidity_readings) == 1
+        assert humidity_readings[0].value == 65.0
+
+    def test_get_readings_filters_by_time(
+        self, table_storage: "TableStorage", cleanup_table
+    ) -> None:
+        """Test that get_readings respects the hours parameter."""
+        now = datetime.now(timezone.utc)
+        readings = [
+            SensorReading(
+                device_id="device-1",
+                device_label="TestSensor",
+                reading_type="humidity",
+                value=65.0,
+                timestamp=now - timedelta(hours=2),
+            ),
+            SensorReading(
+                device_id="device-1",
+                device_label="TestSensor",
+                reading_type="humidity",
+                value=66.0,
+                timestamp=now - timedelta(hours=48),
+            ),
+            SensorReading(
+                device_id="device-1",
+                device_label="TestSensor",
+                reading_type="humidity",
+                value=67.0,
+                timestamp=now - timedelta(hours=100),
+            ),
+        ]
+        table_storage.write_readings(readings)
+
+        # Get last 24 hours
+        recent = table_storage.get_readings("TestSensor-Humidity", hours=24)
+        assert len(recent) == 1
+        assert recent[0].value == 65.0
+
+        # Get last 72 hours
+        more = table_storage.get_readings("TestSensor-Humidity", hours=72)
+        assert len(more) == 2
+
+    def test_get_readings_sorted_by_timestamp(
+        self, table_storage: "TableStorage", cleanup_table
+    ) -> None:
+        """Test that readings are returned sorted by timestamp ascending."""
+        now = datetime.now(timezone.utc)
+        # Write in random order
+        readings = [
+            SensorReading(
+                device_id="device-1",
+                device_label="TestSensor",
+                reading_type="humidity",
+                value=66.0,
+                timestamp=now - timedelta(hours=1),
+            ),
+            SensorReading(
+                device_id="device-1",
+                device_label="TestSensor",
+                reading_type="humidity",
+                value=67.0,
+                timestamp=now - timedelta(hours=3),
+            ),
+            SensorReading(
+                device_id="device-1",
+                device_label="TestSensor",
+                reading_type="humidity",
+                value=65.0,
+                timestamp=now,
+            ),
+        ]
+        table_storage.write_readings(readings)
+
+        result = table_storage.get_readings("TestSensor-Humidity")
+        assert result[0].value == 67.0  # Oldest first
+        assert result[1].value == 66.0
+        assert result[2].value == 65.0  # Newest last
+
+    def test_get_latest_reading(self, table_storage: "TableStorage", cleanup_table) -> None:
+        """Test getting the most recent reading for a sensor."""
+        now = datetime.now(timezone.utc)
+        readings = [
+            SensorReading(
+                device_id="device-1",
+                device_label="TestSensor",
+                reading_type="humidity",
+                value=65.0,
+                timestamp=now - timedelta(hours=2),
+            ),
+            SensorReading(
+                device_id="device-1",
+                device_label="TestSensor",
+                reading_type="humidity",
+                value=70.0,
+                timestamp=now,
+            ),
+            SensorReading(
+                device_id="device-1",
+                device_label="TestSensor",
+                reading_type="humidity",
+                value=67.0,
+                timestamp=now - timedelta(hours=1),
+            ),
+        ]
+        table_storage.write_readings(readings)
+
+        latest = table_storage.get_latest_reading("TestSensor-Humidity")
+        assert latest is not None
+        assert latest.value == 70.0
+
+    def test_get_latest_reading_returns_none_for_empty(
+        self, table_storage: "TableStorage", cleanup_table
+    ) -> None:
+        """Test that get_latest_reading returns None when no readings exist."""
+        result = table_storage.get_latest_reading("NonExistent-Humidity")
+        assert result is None
+
+    def test_reverse_timestamp_ordering(
+        self, table_storage: "TableStorage", cleanup_table
+    ) -> None:
+        """Test that reverse timestamp produces correct ordering."""
+        # Verify the row key calculation
+        earlier = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        later = datetime(2026, 1, 1, 13, 0, 0, tzinfo=timezone.utc)
+
+        earlier_key = table_storage._make_row_key(earlier)
+        later_key = table_storage._make_row_key(later)
+
+        # Earlier time should have LARGER row key (for descending sort)
+        assert earlier_key > later_key
+
+    def test_upsert_overwrites_duplicate_timestamps(
+        self, table_storage: "TableStorage", cleanup_table
+    ) -> None:
+        """Test that writing same timestamp twice overwrites the value."""
+        now = datetime.now(timezone.utc)
+
+        reading1 = SensorReading(
+            device_id="device-1",
+            device_label="TestSensor",
+            reading_type="humidity",
+            value=65.0,
+            timestamp=now,
+        )
+        reading2 = SensorReading(
+            device_id="device-1",
+            device_label="TestSensor",
+            reading_type="humidity",
+            value=70.0,
+            timestamp=now,  # Same timestamp
+        )
+
+        table_storage.write_reading(reading1)
+        table_storage.write_reading(reading2)
+
+        readings = table_storage.get_all_readings()
+        assert len(readings) == 1
+        assert readings[0].value == 70.0  # Second value wins

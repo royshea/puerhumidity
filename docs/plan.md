@@ -251,14 +251,21 @@ Table: sensorreadings
 Reverse timestamp = `9999999999 - unix_timestamp` for efficient "most recent first" queries.
 
 **Validation**:
-```bash
-# Start Azurite emulator
-azurite --silent --location .azurite &
+```powershell
+# Start Azurite emulator (PowerShell background job)
+Start-Job -ScriptBlock { azurite --silent --location .azurite }
+
+# Verify it's running (wait a few seconds first)
+Start-Sleep -Seconds 3
+netstat -an | Select-String "10002"  # Should show LISTENING
 
 # Run tests
-STORAGE_TYPE=azure AZURE_STORAGE_CONNECTION_STRING="UseDevelopmentStorage=true" \
-  pytest tests/test_storage.py -v
+.\.venv\Scripts\pytest tests/test_storage.py -v
 ```
+
+> **Note**: The tests use the well-known Azurite development credentials which are
+> hard-coded and publicly documented (not a secret). Alternatively, run Azurite
+> in a separate terminal window: `azurite --silent --location .azurite`
 
 ---
 
@@ -646,7 +653,7 @@ filter_query = f"PartitionKey eq '{sensor_name}' and RowKey lt '{cutoff_rowkey}'
 - [x] Phase 0: Archive current implementation ✅
 - [x] Phase 1: Project scaffolding & models ✅
 - [x] Phase 2: Storage layer (local) ✅
-- [ ] Phase 3: Azure Table Storage
+- [x] Phase 3: Azure Table Storage ✅
 - [ ] Phase 4: Webhook routes
 - [ ] Phase 5: SmartThings service
 - [ ] Phase 6: Chart service

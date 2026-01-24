@@ -13,6 +13,7 @@ env/
 
 # Environment variables
 .env
+.env.oauth
 
 # Data files
 data/*.csv
@@ -27,6 +28,9 @@ data/*.csv
 # OS
 .DS_Store
 Thumbs.db
+
+# Azure
+.azurite/
 
 # Streamlit
 .streamlit/
