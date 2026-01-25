@@ -657,8 +657,8 @@ filter_query = f"PartitionKey eq '{sensor_name}' and RowKey lt '{cutoff_rowkey}'
 - [x] Phase 4: Webhook routes ✅
 - [x] Phase 5: SmartThings service ✅
 - [x] Phase 6: Chart service ✅
-- [ ] Phase 7: UI routes
-- [ ] Phase 8: Local E2E test
+- [x] Phase 7: UI routes ✅
+- [x] Phase 8: Local E2E test ✅
 - [ ] Phase 9: Deploy to Azure
 - [ ] Phase 10: SmartThings integration
 - [ ] Phase 11: Historical data import
