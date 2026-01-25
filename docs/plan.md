@@ -655,8 +655,8 @@ filter_query = f"PartitionKey eq '{sensor_name}' and RowKey lt '{cutoff_rowkey}'
 - [x] Phase 2: Storage layer (local) ✅
 - [x] Phase 3: Azure Table Storage ✅
 - [x] Phase 4: Webhook routes ✅
-- [ ] Phase 5: SmartThings service
-- [ ] Phase 6: Chart service
+- [x] Phase 5: SmartThings service ✅
+- [x] Phase 6: Chart service ✅
 - [ ] Phase 7: UI routes
 - [ ] Phase 8: Local E2E test
 - [ ] Phase 9: Deploy to Azure
