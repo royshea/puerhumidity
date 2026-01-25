@@ -14,7 +14,7 @@ class Config:
 
     # Storage settings
     STORAGE_TYPE: str = os.environ.get("STORAGE_TYPE", "local")
-    LOCAL_DATA_PATH: str = os.environ.get("LOCAL_DATA_PATH", "data/humidity_data.csv")
+    LOCAL_DATA_PATH: str = os.environ.get("LOCAL_DATA_PATH", "data/readings.csv")
 
     # Azure Table Storage settings
     AZURE_STORAGE_CONNECTION_STRING: str | None = os.environ.get(

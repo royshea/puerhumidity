@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Chart - PuerHumidity{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Humidity & Temperature</h2>
+    
+    <form method="get" action="{{ url_for('ui.chart') }}" class="controls">
+        <div class="control-group">
+            <label for="mode">Display:</label>
+            <select name="mode" id="mode">
+                <option value="raw" {% if mode == 'raw' %}selected{% endif %}>Raw Data</option>
+                <option value="resampled" {% if mode == 'resampled' %}selected{% endif %}>Resampled</option>
+                <option value="smoothed" {% if mode == 'smoothed' %}selected{% endif %}>Smoothed</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="hours">Time Range:</label>
+            <select name="hours" id="hours">
+                <option value="24" {% if hours == 24 %}selected{% endif %}>24 hours</option>
+                <option value="48" {% if hours == 48 %}selected{% endif %}>2 days</option>
+                <option value="168" {% if hours == 168 %}selected{% endif %}>1 week</option>
+                <option value="336" {% if hours == 336 %}selected{% endif %}>2 weeks</option>
+                <option value="504" {% if hours == 504 %}selected{% endif %}>3 weeks</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="resolution">Resolution:</label>
+            <select name="resolution" id="resolution">
+                <option value="5" {% if resolution == 5 %}selected{% endif %}>5 min</option>
+                <option value="10" {% if resolution == 10 %}selected{% endif %}>10 min</option>
+                <option value="30" {% if resolution == 30 %}selected{% endif %}>30 min</option>
+                <option value="60" {% if resolution == 60 %}selected{% endif %}>1 hour</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="window">Smoothing:</label>
+            <select name="window" id="window">
+                <option value="30" {% if window == 30 %}selected{% endif %}>30 min</option>
+                <option value="60" {% if window == 60 %}selected{% endif %}>1 hour</option>
+                <option value="120" {% if window == 120 %}selected{% endif %}>2 hours</option>
+                <option value="240" {% if window == 240 %}selected{% endif %}>4 hours</option>
+            </select>
+        </div>
+
+        <button type="submit">Update</button>
+    </form>
+
+    <div class="chart-container">
+        {{ chart_html | safe }}
+    </div>
+
+    <p style="color: var(--secondary-color); font-size: 0.875rem; margin-top: 1rem;">
+        Showing {{ reading_count }} readings from the last {{ hours }} hours.
+    </p>
+</div>
+{% endblock %}

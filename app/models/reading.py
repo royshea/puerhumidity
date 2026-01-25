@@ -1,7 +1,7 @@
 """Sensor reading data model."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 
@@ -60,6 +60,9 @@ class SensorReading:
         raw_timestamp = data["timestamp"]
         if isinstance(raw_timestamp, str):
             parsed_timestamp = datetime.fromisoformat(raw_timestamp)
+            # Ensure timezone awareness - assume UTC if naive
+            if parsed_timestamp.tzinfo is None:
+                parsed_timestamp = parsed_timestamp.replace(tzinfo=timezone.utc)
         else:
             raise ValueError(f"timestamp must be a string, got {type(raw_timestamp)}")
 
