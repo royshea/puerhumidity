@@ -36,6 +36,8 @@ def handle_webhook() -> ResponseReturnValue:
         return _handle_ping(data)
     elif lifecycle == "CONFIRMATION":
         return _handle_confirmation(data)
+    elif lifecycle == "CONFIGURATION":
+        return _handle_configuration(data)
     elif lifecycle == "INSTALL":
         return _handle_install(data)
     elif lifecycle == "UPDATE":
@@ -79,6 +81,59 @@ def _handle_confirmation(data: dict[str, Any]) -> ResponseReturnValue:
     return jsonify({}), 200
 
 
+def _handle_configuration(data: dict[str, Any]) -> ResponseReturnValue:
+    """Handle CONFIGURATION lifecycle - return app configuration pages.
+
+    For simple apps with no configuration, we return a minimal INITIALIZE response
+    or a single COMPLETE page.
+
+    Args:
+        data: The webhook payload containing configurationData.
+
+    Returns:
+        JSON response with configuration data.
+    """
+    config_data = data.get("configurationData", {})
+    phase = config_data.get("phase")
+    
+    logger.info(f"CONFIGURATION phase: {phase}")
+    
+    if phase == "INITIALIZE":
+        # Return app info and indicate we have a single page
+        # These permissions are required for CAPABILITY subscriptions:
+        # - r:devices:* allows reading all devices
+        # - r:locations:* allows reading location info
+        return jsonify({
+            "configurationData": {
+                "initialize": {
+                    "name": "PuerHumidity",
+                    "description": "Temperature and humidity sensor monitoring",
+                    "id": "app",
+                    "permissions": ["r:devices:*", "r:locations:*"],
+                    "firstPageId": "1"
+                }
+            }
+        })
+    elif phase == "PAGE":
+        # Return a simple completion page (no settings needed)
+        page_id = config_data.get("pageId", "1")
+        return jsonify({
+            "configurationData": {
+                "page": {
+                    "pageId": page_id,
+                    "name": "Configuration",
+                    "nextPageId": None,
+                    "previousPageId": None,
+                    "complete": True,
+                    "sections": []
+                }
+            }
+        })
+    else:
+        logger.warning(f"Unknown CONFIGURATION phase: {phase}")
+        return jsonify({}), 200
+
+
 def _handle_install(data: dict[str, Any]) -> ResponseReturnValue:
     """Handle INSTALL lifecycle - store tokens and create subscriptions.
 
@@ -88,6 +143,7 @@ def _handle_install(data: dict[str, Any]) -> ResponseReturnValue:
     Returns:
         JSON response with installData echoed back.
     """
+    logger.info("INSTALL lifecycle received")
     install_data = data.get("installData", {})
     auth_token = install_data.get("authToken")
     installed_app = install_data.get("installedApp", {})

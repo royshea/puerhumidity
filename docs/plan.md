@@ -901,7 +901,7 @@ filter_query = f"PartitionKey eq '{sensor_name}' and RowKey lt '{cutoff_rowkey}'
 - [x] Phase 7: UI routes ✅
 - [x] Phase 8: Local E2E test ✅
 - [x] Phase 9: Deploy to Azure ✅
-- [ ] Phase 10: SmartThings integration
+- [x] Phase 10: SmartThings integration ✅
 - [ ] Phase 11: Historical data import
 - [ ] Phase 12: Secure storage credentials (optional)
 
