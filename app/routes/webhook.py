@@ -30,6 +30,7 @@ def handle_webhook() -> ResponseReturnValue:
         return jsonify({"error": "No JSON payload"}), 400
 
     lifecycle = data.get("lifecycle")
+    logger.info(f"Webhook received: lifecycle={lifecycle}")
 
     if lifecycle == "PING":
         return _handle_ping(data)
@@ -57,6 +58,7 @@ def _handle_ping(data: dict[str, Any]) -> ResponseReturnValue:
         JSON response with the challenge echoed back.
     """
     challenge = data.get("pingData", {}).get("challenge")
+    logger.info(f"PING: responding with challenge={challenge}")
     return jsonify({"pingData": {"challenge": challenge}})
 
 

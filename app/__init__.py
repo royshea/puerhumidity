@@ -1,5 +1,8 @@
 """Flask application factory for PuerHumidity webhook server."""
 
+import logging
+import sys
+
 from flask import Flask
 
 from app.config import DevelopmentConfig, ProductionConfig
@@ -17,6 +20,19 @@ def create_app(config_name: str | None = None) -> Flask:
         Configured Flask application instance.
     """
     app = Flask(__name__)
+
+    # Configure logging to stdout for Azure App Service
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        stream=sys.stdout,
+    )
+    # Also ensure Flask's logger outputs to stdout
+    app.logger.setLevel(logging.INFO)
+    if not app.logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        app.logger.addHandler(handler)
 
     # Load configuration
     if config_name == "production":

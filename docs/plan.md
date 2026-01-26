@@ -640,7 +640,7 @@ Common errors:
 - Verify events flow through
 
 **Steps**:
-1. Go to https://developer.smartthings.com
+1. Go to https://developer.smartthings.com/workspace/
 2. Find app `4060b8f2-4ade-4c99-8e71-01306215b942`
 3. Update Target URL to `https://app-puerhumidity.azurewebsites.net/webhook`
 4. In SmartThings mobile app, remove installed app
