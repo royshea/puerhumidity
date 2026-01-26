@@ -191,24 +191,158 @@ pytest tests/test_chart.py -v
 
 ### Prerequisites
 
-1. Azure account with Web App and Storage Account
-2. Azure CLI installed and logged in
+1. Azure account with subscription
+2. Azure CLI installed and logged in (`az login`)
 
-### Deploy Steps
+### Initial Setup (One-time)
 
-1. Create Azure Table Storage and get connection string
-2. Create Azure Web App (Free tier works)
-3. Configure environment variables in Azure
-4. Deploy code via Git, ZIP, or GitHub Actions
+```bash
+# Create resource group
+az group create --name rg-puerhumidity --location centralus
+
+# Create storage account
+az storage account create --name stpuerhumidity --resource-group rg-puerhumidity --sku Standard_LRS
+
+# Create table
+az storage table create --name sensorreadings --account-name stpuerhumidity
+
+# Get connection string (save this)
+az storage account show-connection-string --name stpuerhumidity --resource-group rg-puerhumidity --query connectionString -o tsv
+
+# Create App Service Plan (Free tier)
+az appservice plan create --name asp-puerhumidity --resource-group rg-puerhumidity --sku F1 --is-linux --location centralus
+
+# Create Web App
+az webapp create --name app-puerhumidity --resource-group rg-puerhumidity --plan asp-puerhumidity --runtime "PYTHON:3.11"
+
+# Configure app settings
+az webapp config appsettings set --name app-puerhumidity --resource-group rg-puerhumidity --settings \
+    STORAGE_TYPE=azure \
+    "AZURE_STORAGE_CONNECTION_STRING=<your-connection-string>" \
+    AZURE_TABLE_NAME=sensorreadings \
+    SCM_DO_BUILD_DURING_DEPLOYMENT=true
+
+# Set startup command (use app:app, not app:create_app())
+az webapp config set --name app-puerhumidity --resource-group rg-puerhumidity \
+    --startup-file "antenv/bin/gunicorn --bind=0.0.0.0 --timeout 600 app:app"
+```
+
+> **Important**: See [Azure App Service Notes](#azure-app-service-notes) below for details on why this specific startup command format is required.
+
+### Deploy Code
+
+Use the deployment script to create a clean package and deploy:
+
+```powershell
+# From project root
+.\scripts\deploy.ps1
+```
+
+The script:
+- Creates a clean deployment package (excludes `__pycache__`, tests, etc.)
+- Deploys via ZIP to Azure Web App
+- Cleans up temporary files
+
+**Manual deployment** (if needed):
+```powershell
+# Create ZIP manually
+Compress-Archive -Path app, requirements.txt -DestinationPath deploy.zip -Force
+
+# Deploy
+az webapp deploy --name app-puerhumidity --resource-group rg-puerhumidity --src-path deploy.zip --type zip
+```
+
+### Verify Deployment
+
+```bash
+# Health check
+curl https://app-puerhumidity.azurewebsites.net/health
+
+# Test webhook
+curl -X POST https://app-puerhumidity.azurewebsites.net/webhook \
+    -H "Content-Type: application/json" \
+    -d '{"lifecycle": "PING", "pingData": {"challenge": "test"}}'
+```
 
 ### Environment Variables (Azure)
 
+| Variable | Description |
+|----------|-------------|
+| `STORAGE_TYPE` | `azure` for production |
+| `AZURE_STORAGE_CONNECTION_STRING` | Azure Table Storage connection string |
+| `AZURE_TABLE_NAME` | Table name (default: `sensorreadings`) |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` to install dependencies |
+
+## Azure App Service Notes
+
+### How Oryx Builds Python Apps
+
+When you deploy to Azure App Service (Linux), the **Oryx** build system handles your app:
+
+1. **Build Phase**: Oryx detects `requirements.txt` and creates a virtualenv at `/home/site/wwwroot/antenv`
+2. **Compression**: The built app is compressed into `output.tar.gz`
+3. **Startup Phase**: On container start, Oryx extracts to `/tmp/<hash>/` and sets up `PYTHONPATH`
+4. **Execution**: Your startup command runs with the extracted virtualenv
+
+**Key Insight**: The virtualenv is at `antenv/` relative to the app root, NOT in `PATH`. You must reference `antenv/bin/gunicorn` explicitly in the startup command.
+
+### Gunicorn App Reference
+
+Gunicorn expects a WSGI application object, not a factory function. The app exports an instance at module level:
+
+```python
+# In app/__init__.py
+def create_app(config_name: str | None = None) -> Flask:
+    ...
+    return app
+
+# Export for gunicorn - MUST be at module level
+app = create_app()
 ```
-STORAGE_TYPE=azure
-AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;...
-AZURE_TABLE_NAME=sensorreadings
-SECRET_KEY=<generate-secure-key>
+
+The startup command uses `app:app` (module:variable):
 ```
+antenv/bin/gunicorn --bind=0.0.0.0 --timeout 600 app:app
+```
+
+⚠️ **Warning**: Using `app:create_app()` with parentheses fails on Azure due to shell quoting issues, causing `syntax error near unexpected token '('`.
+
+### F1 (Free) Tier Quotas
+
+The F1 tier has strict quotas that can block deployments and restarts:
+
+| Quota | Limit | Reset |
+|-------|-------|-------|
+| WPStopRequests | 15/hour | Top of each hour |
+| CPU | 60 min/day | Daily at 00:00 UTC |
+
+If you hit quota limits during debugging, temporarily upgrade to B1:
+```bash
+# Upgrade (~$0.02/hour)
+az appservice plan update --name asp-puerhumidity --resource-group rg-puerhumidity --sku B1
+
+# Scale back down when done
+az appservice plan update --name asp-puerhumidity --resource-group rg-puerhumidity --sku F1
+```
+
+### Viewing Logs
+
+```bash
+# Deployment logs
+az webapp log deployment list --name app-puerhumidity --resource-group rg-puerhumidity -o table
+
+# Runtime logs (live tail)
+az webapp log tail --name app-puerhumidity --resource-group rg-puerhumidity
+```
+
+### Common Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Exit code 127` | Command not found | Use `antenv/bin/gunicorn` not just `gunicorn` |
+| `syntax error near unexpected token '('` | Shell quoting issue | Use `app:app` not `app:create_app()` |
+| `TypeError: create_app() takes 0 arguments but 2 were given` | Gunicorn passing WSGI args to factory | Export `app = create_app()` at module level |
+| `504 Gateway Timeout` on deploy | App is stopped | Start the app before deploying |
 
 ## Legacy Streamlit App
 

@@ -60,3 +60,8 @@ def _create_storage(app: Flask) -> StorageBase:
 
         data_path = app.config.get("LOCAL_DATA_PATH", "data/humidity_data.csv")
         return LocalStorage(data_path)
+
+
+# Create app instance for WSGI servers (gunicorn, etc.)
+# Usage: gunicorn "app:application"
+application = create_app()

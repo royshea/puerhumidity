@@ -446,9 +446,9 @@ curl http://localhost:5000/ | grep "plotly"
 - Create Resource Group: `rg-puerhumidity`
 - Create Storage Account: `stpuerhumidity` (Standard LRS)
 - Create App Service Plan: `asp-puerhumidity` (F1 Free)
-- Create Web App: `app-puerhumidity` (Python 3.11)
+- Create Web App: `app-puerhumidity` (Python 3.13)
 - Configure app settings (connection strings)
-- Deploy via ZIP or GitHub Actions
+- Deploy code via ZIP deploy
 
 **Azure CLI Commands**:
 ```bash
@@ -459,6 +459,17 @@ az storage account create \
   --name stpuerhumidity \
   --resource-group rg-puerhumidity \
   --sku Standard_LRS
+
+# Get storage connection string
+az storage account show-connection-string \
+  --name stpuerhumidity \
+  --resource-group rg-puerhumidity \
+  --query connectionString -o tsv
+
+# Create Table in storage account
+az storage table create \
+  --name sensorreadings \
+  --connection-string "<connection-string>"
 
 az appservice plan create \
   --name asp-puerhumidity \
@@ -479,7 +490,113 @@ az webapp config appsettings set \
   --settings \
     STORAGE_TYPE=azure \
     AZURE_STORAGE_CONNECTION_STRING="<connection-string>" \
-    DEVICE_LABELS='{"9a52da52-...": "PuerHumidity", "baee9df0-...": "ChestHumidity"}'
+    AZURE_TABLE_NAME=sensorreadings \
+    DEVICE_LABELS='{"9a52da52-a841-4883-b91e-8d29b9a6d01d": "PuerHumidity", "baee9df0-5635-4205-8e58-7de7eb5d88d4": "ChestHumidity"}' \
+    SCM_DO_BUILD_DURING_DEPLOYMENT=true
+```
+
+**Deployment**:
+
+Option A: ZIP Deploy (simplest)
+```powershell
+# From project root, create deployment package
+Compress-Archive -Path app, requirements.txt -DestinationPath deploy.zip -Force
+
+# Deploy
+az webapp deploy \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity \
+  --src-path deploy.zip \
+  --type zip
+```
+
+Option B: Git Deploy (for ongoing updates)
+```bash
+# Configure deployment source
+az webapp deployment source config-local-git \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity
+
+# Get deployment URL (will prompt for credentials)
+az webapp deployment list-publishing-credentials \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity \
+  --query scmUri -o tsv
+
+# Add as git remote and push
+git remote add azure <deployment-url>
+git push azure main
+```
+
+**Understanding Oryx Build & Startup**:
+
+When you deploy to Azure App Service (Linux), the **Oryx** build system handles your app:
+
+1. **Build Phase**: Oryx detects `requirements.txt` and creates a virtualenv at `/home/site/wwwroot/antenv`
+2. **Compression**: The built app is compressed into `output.tar.gz`
+3. **Startup Phase**: On container start, Oryx extracts to `/tmp/<hash>/` and sets up `PYTHONPATH`
+4. **Execution**: Your startup command runs with the extracted virtualenv
+
+**Key Insight**: The virtualenv is at `antenv/` relative to the app root, NOT in `PATH`. You must
+reference `antenv/bin/gunicorn` explicitly, or Oryx's generated startup script handles this for you.
+
+**Gunicorn App Reference**:
+
+Gunicorn expects a WSGI application object, not a factory function. Two approaches:
+
+**Option A (Recommended)**: Export an `app` instance at module level:
+```python
+# In app/__init__.py
+def create_app(config_name: str | None = None) -> Flask:
+    ...
+    return app
+
+# Export for gunicorn - MUST be at module level
+app = create_app()
+```
+
+Then use `app:app` in the startup command.
+
+**Option B**: Use the factory pattern with parentheses:
+```
+gunicorn "app:create_app()"
+```
+
+⚠️ **Warning**: Option B fails on Azure due to shell quoting issues. The parentheses cause
+`syntax error near unexpected token '('` when passed through Azure's startup command handling.
+
+**Startup Configuration**:
+
+Configure via CLI (using `app:app` pattern):
+```bash
+az webapp config set \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity \
+  --startup-file "antenv/bin/gunicorn --bind=0.0.0.0 --timeout 600 app:app"
+```
+
+> **Note**: We use `antenv/bin/gunicorn` because the virtualenv bin directory is not in PATH.
+> Oryx extracts the app to a temp directory and the startup command runs from there.
+
+**F1 (Free) Tier Quotas**:
+
+The F1 tier has strict quotas that can block deployments and restarts:
+
+| Quota | Limit | Reset |
+|-------|-------|-------|
+| WPStopRequests | 15/hour | Top of each hour |
+| CPU | 60 min/day | Daily at 00:00 UTC |
+
+If you hit `WPStopRequests` quota during debugging, either:
+- Wait for hourly reset
+- Temporarily upgrade to B1 (~$0.02/hour): `az appservice plan update --name asp-puerhumidity --resource-group rg-puerhumidity --sku B1`
+- Scale back down after: `az appservice plan update --name asp-puerhumidity --resource-group rg-puerhumidity --sku F1`
+
+**Deployment Script**:
+
+Use `scripts/deploy.ps1` for clean deployments (excludes `__pycache__`, tests, etc.):
+```powershell
+.\scripts\deploy.ps1
 ```
 
 **Validation**:
@@ -492,6 +609,23 @@ curl -X POST https://app-puerhumidity.azurewebsites.net/webhook \
   -H "Content-Type: application/json" \
   -d '{"lifecycle": "PING", "pingData": {"challenge": "test"}}'
 ```
+
+**Troubleshooting**:
+
+View deployment logs:
+```bash
+az webapp log deployment list --name app-puerhumidity --resource-group rg-puerhumidity -o table
+```
+
+View runtime logs (live tail):
+```bash
+az webapp log tail --name app-puerhumidity --resource-group rg-puerhumidity
+```
+
+Common errors:
+- `Exit code 127` = Command not found. Use `antenv/bin/gunicorn` not just `gunicorn`
+- `syntax error near unexpected token '('` = Shell quoting issue. Use `app:app` not `app:create_app()`
+- `TypeError: create_app() takes 0 arguments but 2 were given` = Gunicorn passing WSGI args to factory. Export `app = create_app()` at module level
 
 ---
 
@@ -548,6 +682,113 @@ https://app-puerhumidity.azurewebsites.net/import
 # Enter PAT, submit
 # Verify success message
 # Check chart shows data going back
+```
+
+---
+
+### Phase 12: Secure Storage Credentials (Optional)
+
+**Goal**: Rotate exposed storage account key and migrate to more secure authentication.
+
+**Why**: The storage account key was exposed during initial setup. While app settings are 
+encrypted, it's best practice to rotate keys and optionally migrate to keyless authentication.
+
+**Step 1: Rotate Storage Account Key**
+```bash
+# Regenerate the exposed key
+az storage account keys renew \
+  --account-name stpuerhumidity \
+  --resource-group rg-puerhumidity \
+  --key key1
+
+# Get the new connection string
+az storage account show-connection-string \
+  --name stpuerhumidity \
+  --resource-group rg-puerhumidity \
+  --query connectionString -o tsv
+
+# Update the app setting with new connection string
+az webapp config appsettings set \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity \
+  --settings AZURE_STORAGE_CONNECTION_STRING="<new-connection-string>"
+```
+
+**Step 2 (Option A): Use Azure Key Vault**
+```bash
+# Create Key Vault
+az keyvault create \
+  --name kv-puerhumidity \
+  --resource-group rg-puerhumidity \
+  --location centralus
+
+# Store the connection string as a secret
+az keyvault secret set \
+  --vault-name kv-puerhumidity \
+  --name StorageConnectionString \
+  --value "<connection-string>"
+
+# Enable managed identity on the web app
+az webapp identity assign \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity
+
+# Grant the web app access to Key Vault secrets
+az keyvault set-policy \
+  --name kv-puerhumidity \
+  --object-id <principal-id-from-above> \
+  --secret-permissions get list
+
+# Update app setting to reference Key Vault
+az webapp config appsettings set \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity \
+  --settings AZURE_STORAGE_CONNECTION_STRING="@Microsoft.KeyVault(VaultName=kv-puerhumidity;SecretName=StorageConnectionString)"
+```
+
+**Step 2 (Option B): Use Managed Identity (No Keys)**
+
+This is the most secure option - no secrets to manage at all.
+
+```bash
+# Enable managed identity on the web app
+az webapp identity assign \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity
+
+# Get the principal ID
+az webapp identity show \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity \
+  --query principalId -o tsv
+
+# Grant Storage Table Data Contributor role
+az role assignment create \
+  --assignee <principal-id> \
+  --role "Storage Table Data Contributor" \
+  --scope /subscriptions/<subscription-id>/resourceGroups/rg-puerhumidity/providers/Microsoft.Storage/storageAccounts/stpuerhumidity
+```
+
+Then update the code to use `DefaultAzureCredential`:
+```python
+# In app/storage/table_storage.py
+from azure.identity import DefaultAzureCredential
+
+# Instead of connection string:
+credential = DefaultAzureCredential()
+table_service = TableServiceClient(
+    endpoint="https://stpuerhumidity.table.core.windows.net",
+    credential=credential
+)
+```
+
+**Validation**:
+```bash
+# Verify app still works after credential change
+curl https://app-puerhumidity.azurewebsites.net/health
+
+# Check logs for any authentication errors
+az webapp log tail --name app-puerhumidity --resource-group rg-puerhumidity
 ```
 
 ---
@@ -659,9 +900,10 @@ filter_query = f"PartitionKey eq '{sensor_name}' and RowKey lt '{cutoff_rowkey}'
 - [x] Phase 6: Chart service ✅
 - [x] Phase 7: UI routes ✅
 - [x] Phase 8: Local E2E test ✅
-- [ ] Phase 9: Deploy to Azure
+- [x] Phase 9: Deploy to Azure ✅
 - [ ] Phase 10: SmartThings integration
 - [ ] Phase 11: Historical data import
+- [ ] Phase 12: Secure storage credentials (optional)
 
 ---
 
