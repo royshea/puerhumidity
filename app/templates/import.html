@@ -6,11 +6,6 @@
 <div class="card" style="max-width: 600px; margin: 2rem auto;">
     <h2 style="margin-bottom: 1rem;">Import Historical Data</h2>
     
-    <p style="margin-bottom: 1.5rem; color: var(--secondary-color);">
-        Import historical sensor readings from SmartThings using a Personal Access Token (PAT).
-        The token is used once for the import and is <strong>not stored</strong>.
-    </p>
-
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
@@ -37,6 +32,12 @@
             {% endfor %}
         {% endif %}
     {% endwith %}
+
+    {% if import_enabled %}
+    <p style="margin-bottom: 1.5rem; color: var(--secondary-color);">
+        Import historical sensor readings from SmartThings using a Personal Access Token (PAT).
+        The token is used once for the import and is <strong>not stored</strong>.
+    </p>
 
     <form method="POST" action="{{ url_for('import.import_data') }}">
         <div style="margin-bottom: 1.5rem;">
@@ -90,8 +91,76 @@
             </a>
         </div>
     </form>
+    {% else %}
+    <div style="
+        padding: 1.5rem;
+        background-color: #fef3c7;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+    ">
+        <h3 style="margin: 0 0 0.75rem 0; color: #92400e;">⚠️ Import Disabled</h3>
+        <p style="margin: 0; color: #78350f;">
+            Historical data import is disabled in production for security reasons.
+        </p>
+    </div>
+
+    <h3 style="margin-bottom: 1rem;">To Enable Import</h3>
+    <p style="margin-bottom: 1rem; color: var(--secondary-color);">
+        If you need to import historical data, temporarily enable the feature:
+    </p>
+    <ol style="padding-left: 1.5rem; color: var(--secondary-color); margin-bottom: 1.5rem;">
+        <li style="margin-bottom: 0.5rem;">
+            Set the environment variable: <code style="background: #f3f4f6; padding: 0.2rem 0.4rem; border-radius: 4px;">ENABLE_IMPORT=true</code>
+        </li>
+        <li style="margin-bottom: 0.5rem;">
+            Redeploy or restart the application
+        </li>
+        <li style="margin-bottom: 0.5rem;">
+            Perform your import
+        </li>
+        <li style="margin-bottom: 0.5rem;">
+            Remove the environment variable and redeploy to disable again
+        </li>
+    </ol>
+
+    <h4 style="margin-bottom: 0.75rem;">Azure CLI Example</h4>
+    <pre style="
+        background: #1f2937;
+        color: #e5e7eb;
+        padding: 1rem;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-size: 0.875rem;
+    "><code># Enable import temporarily
+az webapp config appsettings set \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity \
+  --settings ENABLE_IMPORT=true
+
+# After importing, disable again
+az webapp config appsettings delete \
+  --name app-puerhumidity \
+  --resource-group rg-puerhumidity \
+  --setting-names ENABLE_IMPORT</code></pre>
+
+    <div style="margin-top: 1.5rem;">
+        <a href="{{ url_for('ui.chart') }}" style="
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 4px;
+            font-size: 1rem;
+            text-decoration: none;
+        ">
+            ← Back to Chart
+        </a>
+    </div>
+    {% endif %}
 </div>
 
+{% if import_enabled %}
 <div class="card" style="max-width: 600px; margin: 2rem auto;">
     <h3 style="margin-bottom: 1rem;">How to Generate a PAT</h3>
     <ol style="padding-left: 1.5rem; color: var(--secondary-color);">
@@ -115,4 +184,5 @@
         </li>
     </ol>
 </div>
+{% endif %}
 {% endblock %}

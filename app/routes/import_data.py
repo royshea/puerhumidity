@@ -1,6 +1,11 @@
-"""Routes for importing historical data via SmartThings Activities API."""
+"""Routes for importing historical data via SmartThings Activities API.
+
+NOTE: Import functionality is disabled in production for security.
+To enable, set ENABLE_IMPORT=true in environment variables and redeploy.
+"""
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -16,6 +21,9 @@ logger = logging.getLogger(__name__)
 # SmartThings Activities API requires this specific Accept header
 ACTIVITIES_ACCEPT_HEADER = "application/vnd.smartthings+json;v=20180919"
 
+# Import is disabled by default for security
+IMPORT_ENABLED = os.environ.get("ENABLE_IMPORT", "").lower() == "true"
+
 
 @import_bp.route("/import", methods=["GET"])
 def import_form() -> str:
@@ -24,7 +32,7 @@ def import_form() -> str:
     Returns:
         Rendered import form HTML.
     """
-    return render_template("import.html")
+    return render_template("import.html", import_enabled=IMPORT_ENABLED)
 
 
 @import_bp.route("/import", methods=["POST"])
@@ -37,10 +45,15 @@ def import_data() -> str:
     Returns:
         Redirect to chart page on success, or import form with error.
     """
+    # Check if import is enabled
+    if not IMPORT_ENABLED:
+        flash("Import functionality is disabled. Set ENABLE_IMPORT=true to enable.", "error")
+        return render_template("import.html", import_enabled=IMPORT_ENABLED)
+
     pat = request.form.get("pat", "").strip()
     if not pat:
         flash("Please enter a Personal Access Token", "error")
-        return render_template("import.html")
+        return render_template("import.html", import_enabled=IMPORT_ENABLED)
 
     # Get location ID from config or use the known one
     location_id = current_app.config.get(
@@ -53,7 +66,7 @@ def import_data() -> str:
 
         if not readings:
             flash("No humidity/temperature data found in activities", "warning")
-            return render_template("import.html")
+            return render_template("import.html", import_enabled=IMPORT_ENABLED)
 
         # Write to storage using batch operations
         storage = get_storage()
@@ -69,12 +82,12 @@ def import_data() -> str:
         else:
             flash(f"API error: {e}", "error")
         logger.error("Activities API error: %s", e)
-        return render_template("import.html")
+        return render_template("import.html", import_enabled=IMPORT_ENABLED)
 
     except Exception as e:
         flash(f"Import failed: {e}", "error")
         logger.error("Import failed: %s", e)
-        return render_template("import.html")
+        return render_template("import.html", import_enabled=IMPORT_ENABLED)
 
 
 def _fetch_activities(pat: str, location_id: str) -> list[SensorReading]:

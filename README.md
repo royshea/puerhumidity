@@ -182,6 +182,9 @@ The webhook handler processes these event types:
 
 ## Historical Data Import
 
+> **Note**: Web-based import is disabled by default in production for security. 
+> See [Enabling Web Import](#enabling-web-import) below.
+
 ### Web Import (SmartThings Activities API)
 
 1. Visit `/import` on your deployed app
@@ -190,6 +193,26 @@ The webhook handler processes these event types:
 4. The app fetches all available history with pagination
 
 The Activities API provides ~7 days of history.
+
+### Enabling Web Import
+
+Import is disabled by default to prevent unauthorized data writes. To temporarily enable:
+
+```powershell
+# Enable import
+az webapp config appsettings set `
+    --name app-puerhumidity `
+    --resource-group rg-puerhumidity `
+    --settings ENABLE_IMPORT=true
+
+# Perform your import at /import
+
+# Disable import again
+az webapp config appsettings delete `
+    --name app-puerhumidity `
+    --resource-group rg-puerhumidity `
+    --setting-names ENABLE_IMPORT
+```
 
 ### CSV Migration
 
