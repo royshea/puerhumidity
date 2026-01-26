@@ -639,12 +639,68 @@ Common errors:
 - Reinstall to trigger INSTALL lifecycle + subscription creation
 - Verify events flow through
 
+**Critical: CONFIGURATION Lifecycle**:
+
+SmartThings apps require a CONFIGURATION lifecycle handler. When a user adds your app:
+
+1. **CONFIGURATION INITIALIZE** - SmartThings asks for app metadata
+2. **CONFIGURATION PAGE** - SmartThings asks for UI pages to display
+3. **INSTALL** - User confirms, app is installed
+4. **EVENT** - Sensor data flows
+
+Without a proper CONFIGURATION handler, the mobile app shows a blank screen.
+
+**CONFIGURATION Handler Example**:
+```python
+elif lifecycle == "CONFIGURATION":
+    phase = data.get("configurationData", {}).get("phase")
+    
+    if phase == "INITIALIZE":
+        return jsonify({
+            "configurationData": {
+                "initialize": {
+                    "id": "app",
+                    "name": "PuerHumidity Monitor",
+                    "description": "Monitors humidity and temperature",
+                    "permissions": ["r:devices:*", "r:locations:*"],  # REQUIRED!
+                    "firstPageId": "1"
+                }
+            }
+        })
+    
+    elif phase == "PAGE":
+        return jsonify({
+            "configurationData": {
+                "page": {
+                    "pageId": "1",
+                    "name": "Configuration",
+                    "complete": True,
+                    "nextPageId": None,
+                    "previousPageId": None,
+                    "sections": []
+                }
+            }
+        })
+```
+
+**⚠️ Critical: Permissions Array**:
+
+The `permissions` field in INITIALIZE **must not be empty**. Without permissions:
+- CONFIGURATION INITIALIZE/PAGE work fine
+- User clicks "Allow" in the mobile app
+- **INSTALL lifecycle never fires** - the request hangs and fails
+
+Required permissions for sensor monitoring:
+```python
+"permissions": ["r:devices:*", "r:locations:*"]
+```
+
 **Steps**:
 1. Go to https://developer.smartthings.com/workspace/
 2. Find app `4060b8f2-4ade-4c99-8e71-01306215b942`
 3. Update Target URL to `https://app-puerhumidity.azurewebsites.net/webhook`
 4. In SmartThings mobile app, remove installed app
-5. Re-add the app (triggers INSTALL)
+5. Re-add the app (triggers CONFIGURATION → INSTALL)
 6. Monitor Azure logs for subscription creation
 
 **Validation**:
@@ -667,22 +723,79 @@ az webapp log tail --name app-puerhumidity --resource-group rg-puerhumidity
 
 ### Phase 11: Historical Data Import
 
-**Goal**: Bootstrap with historical data.
+**Goal**: Bootstrap with historical data from multiple sources.
 
 **Work**:
-- Generate fresh PAT at https://account.smartthings.com/tokens
-- Use import form to load Activities API data
-- Verify chart shows historical + real-time data
+- Create `/import` route with PAT form for SmartThings Activities API
+- Implement pagination to fetch all available history
+- Optimize storage with batch write operations
+- Create `migrate_csv.py` script for local CSV import
+
+**Activities API Import**:
+
+The SmartThings Activities API returns device history with pagination:
+
+```python
+# Must use specific Accept header
+ACTIVITIES_ACCEPT_HEADER = "application/vnd.smartthings+json;v=20180919"
+
+# Follow pagination via _links.next.href
+url = f"https://api.smartthings.com/activities?location={location_id}&limit=100"
+while url:
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    items.extend(data.get("items", []))
+    url = data.get("_links", {}).get("next", {}).get("href")
+```
+
+**Batch Write Optimization**:
+
+Azure Table Storage supports batch transactions (up to 100 entities per batch, same PartitionKey):
+
+```python
+# Group readings by PartitionKey (sensor_name)
+partitions = defaultdict(list)
+for reading in readings:
+    partitions[reading.sensor_name].append(reading)
+
+# Batch within each partition
+for partition_key, partition_readings in partitions.items():
+    for batch in chunks(partition_readings, 100):
+        operations = [("upsert", entity) for entity in batch]
+        table_client.submit_transaction(operations)
+```
+
+This reduces 3,925 individual requests to ~40 batch transactions.
+
+**CSV Migration Script**:
+
+```powershell
+# Set connection string inline and run
+$env:AZURE_STORAGE_CONNECTION_STRING = (az storage account show-connection-string `
+    --name stpuerhumidity --resource-group rg-puerhumidity --query connectionString -o tsv)
+.\.\.venv\Scripts\python scripts\migrate_csv.py
+```
+
+**Duplicate Prevention**:
+
+Both import methods use `upsert` semantics - same PartitionKey + RowKey overwrites existing entity. Since RowKey is derived from timestamp, duplicate timestamps merge cleanly.
 
 **Validation**:
 ```bash
-# Open browser
+# Web-based import
 https://app-puerhumidity.azurewebsites.net/import
-
 # Enter PAT, submit
-# Verify success message
-# Check chart shows data going back
+# Verify success message shows reading count
+
+# CSV migration (local)
+python scripts/migrate_csv.py
+# Confirm with 'y'
 ```
+
+**Results**:
+- Activities API: 1,276 readings (limited to ~7 days of history)
+- CSV migration: 3,925 readings (Jan 10-25 historical data)
+- Total: 5,201 readings imported with batch optimization
 
 ---
 
@@ -902,7 +1015,7 @@ filter_query = f"PartitionKey eq '{sensor_name}' and RowKey lt '{cutoff_rowkey}'
 - [x] Phase 8: Local E2E test ✅
 - [x] Phase 9: Deploy to Azure ✅
 - [x] Phase 10: SmartThings integration ✅
-- [ ] Phase 11: Historical data import
+- [x] Phase 11: Historical data import ✅
 - [ ] Phase 12: Secure storage credentials (optional)
 
 ---

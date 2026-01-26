@@ -31,13 +31,15 @@ puerHumidity/
 │   ├── __init__.py              # Flask application factory
 │   ├── config.py                # Configuration classes
 │   ├── models/                  # Data models (SensorReading)
-│   ├── routes/                  # Flask blueprints (webhook, UI, health)
+│   ├── routes/                  # Flask blueprints (webhook, UI, health, import)
 │   ├── services/                # Business logic (chart, data transform)
 │   ├── storage/                 # Storage backends (local CSV, Azure Table)
 │   └── templates/               # Jinja2 HTML templates
 ├── tests/                       # Pytest test suite
 ├── scripts/
-│   └── seed_data.py            # Seed local storage from historical CSV
+│   ├── seed_data.py            # Seed local storage from historical CSV
+│   ├── migrate_csv.py          # Migrate CSV to Azure Table Storage
+│   └── deploy.ps1              # Azure deployment script
 ├── archive/                     # Legacy Streamlit app (preserved)
 ├── docs/
 │   └── plan.md                 # Migration plan and architecture docs
@@ -140,6 +142,7 @@ Visit http://localhost:5000 to see the interactive chart. Controls include:
 |----------|--------|---------|
 | `/webhook` | POST | Receive SmartThings lifecycle events |
 | `/` | GET | Chart UI |
+| `/import` | GET/POST | Import historical data with PAT |
 | `/health` | GET | Health check |
 
 ### SmartThings Lifecycle Events
@@ -148,9 +151,12 @@ The webhook handler processes these event types:
 
 - **PING**: Responds with challenge for app verification
 - **CONFIRMATION**: Confirms webhook URL registration
+- **CONFIGURATION**: Returns app metadata and UI pages (required for mobile app)
 - **INSTALL/UPDATE**: Creates device subscriptions
 - **EVENT**: Processes sensor readings (temperature/humidity)
 - **UNINSTALL**: Cleanup when app is removed
+
+> **Important**: The CONFIGURATION lifecycle must return proper `permissions` (`["r:devices:*", "r:locations:*"]`) or the INSTALL lifecycle will never fire.
 
 ### Registered SmartApp
 
@@ -173,6 +179,30 @@ The webhook handler processes these event types:
 
 - **Partition Key**: Device label (e.g., "PuerHumidity")
 - **Row Key**: Timestamp + reading type (for uniqueness)
+
+## Historical Data Import
+
+### Web Import (SmartThings Activities API)
+
+1. Visit `/import` on your deployed app
+2. Generate a PAT at [account.smartthings.com/tokens](https://account.smartthings.com/tokens)
+3. Enter the PAT and submit
+4. The app fetches all available history with pagination
+
+The Activities API provides ~7 days of history.
+
+### CSV Migration
+
+For larger historical datasets, use the migration script:
+
+```powershell
+# Set connection string and run
+$env:AZURE_STORAGE_CONNECTION_STRING = (az storage account show-connection-string `
+    --name stpuerhumidity --resource-group rg-puerhumidity --query connectionString -o tsv)
+python scripts/migrate_csv.py
+```
+
+The script uses batch operations (100 entities per transaction) for efficient bulk loading.
 
 ## Testing
 
