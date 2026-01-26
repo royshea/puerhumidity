@@ -62,11 +62,14 @@ class LocalStorage(StorageBase):
                     ]
                 )
 
-    def write_readings(self, readings: list[SensorReading]) -> None:
+    def write_readings(self, readings: list[SensorReading]) -> int:
         """Write multiple sensor readings to the CSV file.
 
         Args:
             readings: List of sensor readings to store.
+
+        Returns:
+            Number of readings written.
         """
         with self._lock:
             with open(self.file_path, "a", newline="", encoding="utf-8") as f:
@@ -81,6 +84,7 @@ class LocalStorage(StorageBase):
                             reading.timestamp.isoformat(),
                         ]
                     )
+        return len(readings)
 
     def _read_all_from_file(self) -> list[SensorReading]:
         """Read all readings from the CSV file.

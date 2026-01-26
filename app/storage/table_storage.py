@@ -108,16 +108,72 @@ class TableStorage(StorageBase):
         }
         self._get_table_client().upsert_entity(entity)
 
-    def write_readings(self, readings: list[SensorReading]) -> None:
-        """Write multiple sensor readings to Table Storage.
+    def write_readings(self, readings: list[SensorReading]) -> int:
+        """Write multiple sensor readings to Table Storage using batch operations.
+
+        Azure Table Storage batches require all entities to share the same PartitionKey,
+        so we group readings by sensor_name (which is the PartitionKey) and batch within
+        each group. Max 100 entities per batch.
 
         Args:
             readings: List of sensor readings to store.
+
+        Returns:
+            Number of readings successfully written.
         """
-        # For simplicity, write one at a time
-        # Could be optimized with batch operations for large imports
+        if not readings:
+            return 0
+
+        # Group readings by PartitionKey (sensor_name)
+        from collections import defaultdict
+        partitions: dict[str, list[SensorReading]] = defaultdict(list)
         for reading in readings:
-            self.write_reading(reading)
+            partitions[reading.sensor_name].append(reading)
+
+        written_count = 0
+        table_client = self._get_table_client()
+
+        for partition_key, partition_readings in partitions.items():
+            # Process in batches of 100 (Azure Table Storage limit)
+            batch_size = 100
+            for i in range(0, len(partition_readings), batch_size):
+                batch_readings = partition_readings[i : i + batch_size]
+                
+                # Build batch operations
+                operations = []
+                for reading in batch_readings:
+                    entity = {
+                        "PartitionKey": reading.sensor_name,
+                        "RowKey": self._make_row_key(reading.timestamp),
+                        "value": reading.value,
+                        "timestamp": reading.timestamp.isoformat(),
+                        "device_id": reading.device_id,
+                        "device_label": reading.device_label,
+                        "reading_type": reading.reading_type,
+                    }
+                    operations.append(("upsert", entity))
+
+                # Submit batch
+                try:
+                    table_client.submit_transaction(operations)
+                    written_count += len(batch_readings)
+                except Exception as e:
+                    # If batch fails, fall back to individual writes
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        "Batch write failed for partition %s, falling back to individual writes: %s",
+                        partition_key,
+                        e,
+                    )
+                    for reading in batch_readings:
+                        try:
+                            self.write_reading(reading)
+                            written_count += 1
+                        except Exception:
+                            pass
+
+        return written_count
 
     def get_readings(self, sensor_name: str, hours: int = 504) -> list[SensorReading]:
         """Get readings for a specific sensor within the time window.

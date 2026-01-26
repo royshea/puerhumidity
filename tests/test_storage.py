@@ -80,8 +80,9 @@ class TestLocalStorage:
             for i in range(5)
         ]
 
-        storage.write_readings(readings)
+        written_count = storage.write_readings(readings)
 
+        assert written_count == 5
         result = storage.get_all_readings()
         assert len(result) == 5
 
@@ -365,8 +366,9 @@ class TestTableStorage:
             for i in range(5)
         ]
 
-        table_storage.write_readings(readings)
+        written_count = table_storage.write_readings(readings)
 
+        assert written_count == 5
         result = table_storage.get_all_readings()
         assert len(result) == 5
 

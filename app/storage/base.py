@@ -22,11 +22,14 @@ class StorageBase(ABC):
         ...
 
     @abstractmethod
-    def write_readings(self, readings: list[SensorReading]) -> None:
+    def write_readings(self, readings: list[SensorReading]) -> int:
         """Write multiple sensor readings to storage.
 
         Args:
             readings: List of sensor readings to store.
+
+        Returns:
+            Number of readings successfully written.
         """
         ...
 
