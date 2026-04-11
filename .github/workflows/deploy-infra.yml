@@ -16,6 +16,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Fail if RBAC files changed
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -qi rbac; then
+            echo "::error::RBAC files changed. The CI service principal cannot create role assignments."
+            echo "::error::Deploy manually with: az deployment group create --resource-group rg-shared-platform --template-file infra/main.bicep --parameters infra/main.bicepparam --parameters deployRbac=true"
+            exit 1
+          fi
 
       - name: Azure Login (OIDC)
         uses: azure/login@v2

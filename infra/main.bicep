@@ -7,6 +7,9 @@ param storageAccountName string
 @description('Name of the Web App to create')
 param webAppName string = 'app-puerhumidity-v2'
 
+@description('Deploy RBAC role assignments (requires User Access Administrator — use for bootstrap only)')
+param deployRbac bool = false
+
 param location string = 'westus3'
 
 // Reference shared resources (must already exist in the target resource group)
@@ -38,8 +41,9 @@ module webApp 'modules/web-app.bicep' = {
   }
 }
 
-// Grant the web app's managed identity Table Data Contributor on shared storage
-module storageRbac 'modules/storage-rbac.bicep' = {
+// Grant the web app's managed identity Table Data Contributor on shared storage.
+// Requires User Access Administrator — run manually with deployRbac=true for bootstrap.
+module storageRbac 'modules/storage-rbac.bicep' = if (deployRbac) {
   name: 'puerhumidity-storage-rbac'
   params: {
     principalId: webApp.outputs.principalId
