@@ -36,11 +36,16 @@ puerHumidity/
 │   ├── storage/                 # Storage backends (local CSV, Azure Table)
 │   └── templates/               # Jinja2 HTML templates
 ├── tests/                       # Pytest test suite
+├── infra/                       # Bicep infrastructure-as-code
+│   ├── main.bicep               # Project infrastructure orchestrator
+│   ├── main.bicepparam          # Parameter values for shared platform
+│   └── modules/                 # Reusable Bicep modules (from commonAzureInfra)
+├── .github/workflows/           # CI/CD pipelines
+│   ├── deploy-infra.yml         # Deploy Bicep on infra/ changes
+│   └── deploy-app.yml           # Deploy app code on push to main
 ├── scripts/
 │   ├── seed_data.py            # Seed local storage from historical CSV
-│   ├── migrate_csv.py          # Migrate CSV to Azure Table Storage
-│   └── deploy.ps1              # Azure deployment script
-├── archive/                     # Legacy Streamlit app (preserved)
+│   └── migrate_csv.py          # Migrate CSV to Azure Table Storage
 ├── docs/
 │   └── plan.md                 # Migration plan and architecture docs
 ├── data/
@@ -93,9 +98,9 @@ Create a `.env` file in the project root:
 STORAGE_TYPE=local                    # 'local' or 'azure'
 LOCAL_DATA_PATH=data/readings.csv     # For local storage
 
-# Azure Table Storage (production)
-AZURE_STORAGE_CONNECTION_STRING=...   # Azure connection string
-AZURE_TABLE_NAME=sensorreadings       # Table name
+# Azure Table Storage (production — uses Managed Identity, not connection strings)
+AZURE_STORAGE_ACCOUNT_NAME=sthobbyshared  # Storage account name
+AZURE_TABLE_NAME=sensorreadings            # Table name
 
 # Flask settings
 SECRET_KEY=your-secret-key-here
@@ -202,7 +207,7 @@ Import is disabled by default to prevent unauthorized data writes. To temporaril
 # Enable import
 az webapp config appsettings set `
     --name app-puerhumidity `
-    --resource-group rg-puerhumidity `
+    --resource-group rg-shared-platform `
     --settings ENABLE_IMPORT=true
 
 # Perform your import at /import
@@ -210,7 +215,7 @@ az webapp config appsettings set `
 # Disable import again
 az webapp config appsettings delete `
     --name app-puerhumidity `
-    --resource-group rg-puerhumidity `
+    --resource-group rg-shared-platform `
     --setting-names ENABLE_IMPORT
 ```
 
@@ -218,14 +223,12 @@ az webapp config appsettings delete `
 
 For larger historical datasets, use the migration script:
 
-```powershell
-# Set connection string and run
-$env:AZURE_STORAGE_CONNECTION_STRING = (az storage account show-connection-string `
-    --name stpuerhumidity --resource-group rg-puerhumidity --query connectionString -o tsv)
+```bash
 python scripts/migrate_csv.py
 ```
 
 The script uses batch operations (100 entities per transaction) for efficient bulk loading.
+See `docs/shared-infra-migration.md` for details on migrating data between storage accounts.
 
 ## Testing
 
@@ -242,68 +245,49 @@ pytest tests/test_chart.py -v
 
 ## Azure Deployment
 
-### Prerequisites
+This project runs on the shared hobby platform (`rg-shared-platform`, westus3) using infrastructure defined in [commonAzureInfra](https://github.com/royshea/commonAzureInfra). Deployment is fully automated via GitHub Actions.
 
-1. Azure account with subscription
-2. Azure CLI installed and logged in (`az login`)
+### Architecture
 
-### Initial Setup (One-time)
+| Resource | Value |
+|----------|-------|
+| Resource Group | `rg-shared-platform` (westus3) |
+| App Service Plan | `asp-hobby` (B1 shared) |
+| Web App | `app-puerhumidity` |
+| Storage Account | `sthobbyshared` (shared) |
+| Auth to storage | Managed Identity + RBAC (Table Data Contributor) |
+| Deployment | GitHub Actions CI/CD |
+| IaC | Bicep in `infra/` directory |
 
-```bash
-# Create resource group
-az group create --name rg-puerhumidity --location centralus
+### CI/CD Workflows
 
-# Create storage account
-az storage account create --name stpuerhumidity --resource-group rg-puerhumidity --sku Standard_LRS
+Pushing to `main` triggers automatic deployment:
 
-# Create table
-az storage table create --name sensorreadings --account-name stpuerhumidity
+- **`deploy-infra.yml`** — Runs when `infra/**` files change. Previews changes (what-if) then deploys Bicep templates to `rg-shared-platform`.
+- **`deploy-app.yml`** — Runs when application code changes (ignores `infra/`, `docs/`, `*.md`). Builds and deploys the Python app to Azure App Service.
 
-# Get connection string (save this)
-az storage account show-connection-string --name stpuerhumidity --resource-group rg-puerhumidity --query connectionString -o tsv
+Both workflows authenticate via OIDC federation — no stored credentials.
 
-# Create App Service Plan (Free tier)
-az appservice plan create --name asp-puerhumidity --resource-group rg-puerhumidity --sku F1 --is-linux --location centralus
+### Required GitHub Secrets
 
-# Create Web App
-az webapp create --name app-puerhumidity --resource-group rg-puerhumidity --plan asp-puerhumidity --runtime "PYTHON:3.11"
+| Secret | Description |
+|--------|-------------|
+| `AZURE_CLIENT_ID` | App registration client ID for OIDC |
+| `AZURE_TENANT_ID` | Azure AD tenant ID |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
 
-# Configure app settings
-az webapp config appsettings set --name app-puerhumidity --resource-group rg-puerhumidity --settings \
-    STORAGE_TYPE=azure \
-    "AZURE_STORAGE_CONNECTION_STRING=<your-connection-string>" \
-    AZURE_TABLE_NAME=sensorreadings \
-    SCM_DO_BUILD_DURING_DEPLOYMENT=true
+### Environment Variables (Azure)
 
-# Set startup command (use app:app, not app:create_app())
-az webapp config set --name app-puerhumidity --resource-group rg-puerhumidity \
-    --startup-file "antenv/bin/gunicorn --bind=0.0.0.0 --timeout 600 app:app"
-```
+Configured via Bicep in `infra/main.bicep`:
 
-> **Important**: See [Azure App Service Notes](#azure-app-service-notes) below for details on why this specific startup command format is required.
+| Variable | Description |
+|----------|-------------|
+| `STORAGE_TYPE` | `azure` for production |
+| `AZURE_STORAGE_ACCOUNT_NAME` | Shared storage account name |
+| `AZURE_TABLE_NAME` | Table name (default: `sensorreadings`) |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` to install dependencies |
 
-### Deploy Code
-
-Use the deployment script to create a clean package and deploy:
-
-```powershell
-# From project root
-.\scripts\deploy.ps1
-```
-
-The script:
-- Creates a clean deployment package (excludes `__pycache__`, tests, etc.)
-- Deploys via ZIP to Azure Web App
-- Cleans up temporary files
-
-**Manual deployment** (if needed):
-```powershell
-# Create ZIP manually
-Compress-Archive -Path app, requirements.txt -DestinationPath deploy.zip -Force
-
-# Deploy
-az webapp deploy --name app-puerhumidity --resource-group rg-puerhumidity --src-path deploy.zip --type zip
-```
+`SECRET_KEY` is set manually via `az webapp config appsettings set` (not in Bicep, since it's a secret).
 
 ### Verify Deployment
 
@@ -317,92 +301,12 @@ curl -X POST https://app-puerhumidity.azurewebsites.net/webhook \
     -d '{"lifecycle": "PING", "pingData": {"challenge": "test"}}'
 ```
 
-### Environment Variables (Azure)
-
-| Variable | Description |
-|----------|-------------|
-| `STORAGE_TYPE` | `azure` for production |
-| `AZURE_STORAGE_CONNECTION_STRING` | Azure Table Storage connection string |
-| `AZURE_TABLE_NAME` | Table name (default: `sensorreadings`) |
-| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` to install dependencies |
-
-## Azure App Service Notes
-
-### How Oryx Builds Python Apps
-
-When you deploy to Azure App Service (Linux), the **Oryx** build system handles your app:
-
-1. **Build Phase**: Oryx detects `requirements.txt` and creates a virtualenv at `/home/site/wwwroot/antenv`
-2. **Compression**: The built app is compressed into `output.tar.gz`
-3. **Startup Phase**: On container start, Oryx extracts to `/tmp/<hash>/` and sets up `PYTHONPATH`
-4. **Execution**: Your startup command runs with the extracted virtualenv
-
-**Key Insight**: The virtualenv is at `antenv/` relative to the app root, NOT in `PATH`. You must reference `antenv/bin/gunicorn` explicitly in the startup command.
-
-### Gunicorn App Reference
-
-Gunicorn expects a WSGI application object, not a factory function. The app exports an instance at module level:
-
-```python
-# In app/__init__.py
-def create_app(config_name: str | None = None) -> Flask:
-    ...
-    return app
-
-# Export for gunicorn - MUST be at module level
-app = create_app()
-```
-
-The startup command uses `app:app` (module:variable):
-```
-antenv/bin/gunicorn --bind=0.0.0.0 --timeout 600 app:app
-```
-
-⚠️ **Warning**: Using `app:create_app()` with parentheses fails on Azure due to shell quoting issues, causing `syntax error near unexpected token '('`.
-
-### F1 (Free) Tier Quotas
-
-The F1 tier has strict quotas that can block deployments and restarts:
-
-| Quota | Limit | Reset |
-|-------|-------|-------|
-| WPStopRequests | 15/hour | Top of each hour |
-| CPU | 60 min/day | Daily at 00:00 UTC |
-
-If you hit quota limits during debugging, temporarily upgrade to B1:
-```bash
-# Upgrade (~$0.02/hour)
-az appservice plan update --name asp-puerhumidity --resource-group rg-puerhumidity --sku B1
-
-# Scale back down when done
-az appservice plan update --name asp-puerhumidity --resource-group rg-puerhumidity --sku F1
-```
-
 ### Viewing Logs
 
 ```bash
-# Deployment logs
-az webapp log deployment list --name app-puerhumidity --resource-group rg-puerhumidity -o table
-
 # Runtime logs (live tail)
-az webapp log tail --name app-puerhumidity --resource-group rg-puerhumidity
+az webapp log tail --name app-puerhumidity --resource-group rg-shared-platform
 ```
-
-### Common Errors
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Exit code 127` | Command not found | Use `antenv/bin/gunicorn` not just `gunicorn` |
-| `syntax error near unexpected token '('` | Shell quoting issue | Use `app:app` not `app:create_app()` |
-| `TypeError: create_app() takes 0 arguments but 2 were given` | Gunicorn passing WSGI args to factory | Export `app = create_app()` at module level |
-| `504 Gateway Timeout` on deploy | App is stopped | Start the app before deploying |
-
-## Legacy Streamlit App
-
-The original Streamlit polling app is preserved in `archive/`. It used:
-- Polling-based data collection (vs webhooks)
-- Direct SmartThings API calls
-- Single CSV storage format
 
 ## Troubleshooting
 
@@ -411,8 +315,6 @@ The original Streamlit polling app is preserved in `archive/`. It used:
 **Timezone comparison errors**: All timestamps should be UTC. The app normalizes naive datetimes to UTC.
 
 **No data in chart**: Run the seed script or wait for SmartThings events. Check that `data/readings.csv` exists and has data.
-
-**Azure connection fails**: Verify your connection string and that the storage account allows your IP.
 
 ## Development
 
