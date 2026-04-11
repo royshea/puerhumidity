@@ -307,7 +307,7 @@ class TestTableStorage:
         table_name = f"test{uuid.uuid4().hex[:8]}"
 
         try:
-            storage = TableStorage(self.AZURITE_CONNECTION_STRING, table_name)
+            storage = TableStorage(connection_string=self.AZURITE_CONNECTION_STRING, table_name=table_name)
             return storage
         except Exception:
             pytest.skip("Azurite not available - skipping Table Storage tests")

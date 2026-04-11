@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from azure.core.exceptions import ResourceNotFoundError
 from azure.data.tables import TableClient, TableServiceClient
+from azure.identity import DefaultAzureCredential
 
 from app.models import SensorReading
 from app.storage.base import StorageBase
@@ -11,6 +12,9 @@ from app.storage.base import StorageBase
 
 class TableStorage(StorageBase):
     """Azure Table Storage backend for production use.
+
+    Authenticates via Managed Identity (DefaultAzureCredential) in production.
+    Falls back to connection string for local Azurite testing.
 
     Uses reverse timestamps in RowKey for efficient "most recent first" queries.
     Schema:
@@ -26,17 +30,39 @@ class TableStorage(StorageBase):
     # Max timestamp for reverse calculation (year 2286)
     MAX_TIMESTAMP = 9999999999
 
-    def __init__(self, connection_string: str, table_name: str = "sensorreadings") -> None:
+    def __init__(
+        self,
+        *,
+        account_url: str | None = None,
+        connection_string: str | None = None,
+        table_name: str = "sensorreadings",
+    ) -> None:
         """Initialize Azure Table Storage.
 
+        Provide either account_url (production, uses DefaultAzureCredential)
+        or connection_string (Azurite / local testing). Exactly one must be set.
+
         Args:
-            connection_string: Azure Storage connection string.
+            account_url: Table service endpoint (e.g., https://sthobbyshared.table.core.windows.net).
+            connection_string: Azure Storage connection string (Azurite / testing only).
             table_name: Name of the table to use.
         """
-        self.connection_string = connection_string
+        if account_url and connection_string:
+            raise ValueError("Provide account_url or connection_string, not both")
+        if not account_url and not connection_string:
+            raise ValueError("Provide either account_url or connection_string")
+
+        self._account_url = account_url
+        self._connection_string = connection_string
         self.table_name = table_name
         self._table_client: TableClient | None = None
         self._ensure_table_exists()
+
+    def _create_service_client(self) -> TableServiceClient:
+        """Create a TableServiceClient using the configured auth method."""
+        if self._account_url:
+            return TableServiceClient(endpoint=self._account_url, credential=DefaultAzureCredential())
+        return TableServiceClient.from_connection_string(self._connection_string)  # type: ignore[arg-type]
 
     def _get_table_client(self) -> TableClient:
         """Get or create the table client.
@@ -45,13 +71,13 @@ class TableStorage(StorageBase):
             TableClient instance.
         """
         if self._table_client is None:
-            service_client = TableServiceClient.from_connection_string(self.connection_string)
+            service_client = self._create_service_client()
             self._table_client = service_client.get_table_client(self.table_name)
         return self._table_client
 
     def _ensure_table_exists(self) -> None:
         """Create the table if it doesn't exist."""
-        service_client = TableServiceClient.from_connection_string(self.connection_string)
+        service_client = self._create_service_client()
         try:
             service_client.create_table(self.table_name)
         except ResourceNotFoundError:

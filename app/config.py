@@ -17,9 +17,7 @@ class Config:
     LOCAL_DATA_PATH: str = os.environ.get("LOCAL_DATA_PATH", "data/readings.csv")
 
     # Azure Table Storage settings
-    AZURE_STORAGE_CONNECTION_STRING: str | None = os.environ.get(
-        "AZURE_STORAGE_CONNECTION_STRING"
-    )
+    AZURE_STORAGE_ACCOUNT_NAME: str | None = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME")
     AZURE_TABLE_NAME: str = os.environ.get("AZURE_TABLE_NAME", "sensorreadings")
 
     # SmartThings settings
@@ -53,9 +51,9 @@ class ProductionConfig(Config):
     @classmethod
     def init_app(cls, app: Any) -> None:
         """Validate production configuration."""
-        if cls.STORAGE_TYPE == "azure" and not cls.AZURE_STORAGE_CONNECTION_STRING:
+        if cls.STORAGE_TYPE == "azure" and not cls.AZURE_STORAGE_ACCOUNT_NAME:
             raise ValueError(
-                "AZURE_STORAGE_CONNECTION_STRING must be set in production with azure storage"
+                "AZURE_STORAGE_ACCOUNT_NAME must be set in production with azure storage"
             )
 
 

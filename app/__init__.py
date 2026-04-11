@@ -66,11 +66,12 @@ def _create_storage(app: Flask) -> StorageBase:
     if storage_type == "azure":
         from app.storage.table_storage import TableStorage
 
-        connection_string = app.config.get("AZURE_STORAGE_CONNECTION_STRING")
-        if not connection_string:
-            raise ValueError("AZURE_STORAGE_CONNECTION_STRING required for azure storage")
+        account_name = app.config.get("AZURE_STORAGE_ACCOUNT_NAME")
+        if not account_name:
+            raise ValueError("AZURE_STORAGE_ACCOUNT_NAME required for azure storage")
+        account_url = f"https://{account_name}.table.core.windows.net"
         table_name = app.config.get("AZURE_TABLE_NAME", "sensorreadings")
-        return TableStorage(connection_string, table_name)
+        return TableStorage(account_url=account_url, table_name=table_name)
     else:
         from app.storage.local_storage import LocalStorage
 
