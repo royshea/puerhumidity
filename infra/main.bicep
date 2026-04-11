@@ -5,7 +5,7 @@ param appServicePlanName string
 param storageAccountName string
 
 @description('Name of the Web App to create')
-param webAppName string = 'app-puerhumidity-v2'
+param webAppName string = 'app-puerhumidity'
 
 @description('Deploy RBAC role assignments (requires User Access Administrator — use for bootstrap only)')
 param deployRbac bool = false

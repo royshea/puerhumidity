@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  AZURE_WEBAPP_NAME: 'app-puerhumidity-v2'
+  AZURE_WEBAPP_NAME: 'app-puerhumidity'
   PYTHON_VERSION: '3.13'
 
 jobs:
