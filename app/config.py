@@ -55,6 +55,10 @@ class ProductionConfig(Config):
             raise ValueError(
                 "AZURE_STORAGE_ACCOUNT_NAME must be set in production with azure storage"
             )
+        if not os.environ.get("SECRET_KEY"):
+            raise ValueError(
+                "SECRET_KEY environment variable must be set in production"
+            )
 
 
 class TestingConfig(Config):
