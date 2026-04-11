@@ -5,7 +5,7 @@ param appServicePlanName string
 param storageAccountName string
 
 @description('Name of the Web App to create')
-param webAppName string = 'app-puerhumidity'
+param webAppName string = 'app-puerhumidity-v2'
 
 param location string = 'westus3'
 
