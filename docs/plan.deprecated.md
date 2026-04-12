@@ -1,6 +1,13 @@
-# PuerHumidity Azure Migration Plan
+# PuerHumidity Azure Migration Plan (DEPRECATED)
 
-> **Document Purpose**: Complete implementation plan for migrating from a local Streamlit polling app to an Azure-hosted webhook-based system. Contains enough context to resume work after any break.
+> **⚠️ DEPRECATED**: This document is a historical artifact from the initial migration
+> of puerHumidity from a local Streamlit polling app to an Azure-hosted webhook-based
+> system (v2). The migration is complete. This document is preserved for reference —
+> it contains useful learnings about SmartThings webhook lifecycles, subscription
+> management, and the CONFIGURATION handler requirements. For current architecture
+> and deployment docs, see [README.md](../README.md).
+
+> **Original Purpose**: Complete implementation plan for migrating from a local Streamlit polling app to an Azure-hosted webhook-based system. Contains enough context to resume work after any break.
 
 ## Project Overview
 

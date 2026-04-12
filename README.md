@@ -1,27 +1,37 @@
 # SmartThings Humidity & Temperature Monitor
 
-A Python application for monitoring and visualizing humidity and temperature data from SmartThings sensors using real-time webhooks.
+A Python Flask application that receives real-time sensor events from SmartThings via webhooks, stores readings in Azure Table Storage, and provides an interactive time-series visualization with Plotly.
 
-## Overview
+Live at: https://app-puerhumidity.azurewebsites.net
 
-This application receives real-time sensor events from SmartThings via webhooks, stores readings in persistent storage (local CSV or Azure Table Storage), and provides an interactive time-series visualization using Flask and Plotly.
+## Architecture
+
+```
+SmartThings Cloud                      Azure (rg-shared-platform, westus3)
+┌──────────────┐    HTTPS POST     ┌──────────────────────────────────────┐
+│  Hub/Sensors ├──── webhook ─────►│  app-puerhumidity (App Service, B1)  │
+└──────────────┘    /webhook       │  Python 3.13 · Flask · Gunicorn      │
+                                   │  Managed Identity (DefaultAzureCredential)
+                                   └──────────────┬───────────────────────┘
+                                                   │ Table Data Contributor (RBAC)
+                                                   ▼
+                                   ┌──────────────────────────────────────┐
+                                   │  sthobbyshared (Storage Account)     │
+                                   │  Table: sensorreadings               │
+                                   └──────────────────────────────────────┘
+```
+
+Infrastructure is defined as code in [`infra/`](infra/) using Bicep modules from [commonAzureInfra](https://github.com/royshea/commonAzureInfra). Deployment is fully automated via GitHub Actions with OIDC federation — no stored credentials.
 
 ## Features
 
-- **Real-time Webhooks**: SmartThings pushes device events instantly (no polling)
-- **Dual Storage Backends**: Local CSV for development, Azure Table Storage for production
-- **Interactive Visualization**: Dual-axis chart with temperature (°F) and humidity (%) 
-- **Multiple Display Modes**: Raw data, resampled (forward-fill), or smoothed (sliding average)
-- **Configurable Time Windows**: View data from last few hours to 3 weeks
-- **21-Day Data Window**: Automatically filters display to the most recent 21 days
-
-## Technology Stack
-
-- **Python 3.13+**
-- **Flask 3.0**: Web framework for webhook handling and UI
-- **Plotly**: Interactive charting
-- **Azure Table Storage**: Production data storage (optional)
-- **SmartThings Webhook API**: Real-time device event delivery
+- **Real-time webhooks** — SmartThings pushes device events instantly (no polling)
+- **Managed Identity auth** — `DefaultAzureCredential` for storage access; no connection strings
+- **Interactive visualization** — dual-axis chart (temperature °F / humidity %) with Plotly
+- **Multiple display modes** — raw data, resampled (forward-fill), or smoothed (sliding average)
+- **Configurable time windows** — view from last few hours to 3 weeks
+- **Infrastructure as Code** — Bicep templates with CI/CD guard rails
+- **Dual storage backends** — Azure Table Storage in production, local CSV for development
 
 ## Project Structure
 
@@ -29,46 +39,67 @@ This application receives real-time sensor events from SmartThings via webhooks,
 puerHumidity/
 ├── app/
 │   ├── __init__.py              # Flask application factory
-│   ├── config.py                # Configuration classes
+│   ├── config.py                # Configuration classes (Dev/Prod/Test)
 │   ├── models/                  # Data models (SensorReading)
-│   ├── routes/                  # Flask blueprints (webhook, UI, health, import)
-│   ├── services/                # Business logic (chart, data transform)
-│   ├── storage/                 # Storage backends (local CSV, Azure Table)
+│   ├── routes/                  # Flask blueprints
+│   │   ├── webhook.py           #   SmartThings lifecycle handler
+│   │   ├── ui.py                #   Chart UI
+│   │   ├── health.py            #   Health check
+│   │   └── import_data.py       #   Historical data import (disabled by default)
+│   ├── services/                # Business logic
+│   │   ├── chart.py             #   Plotly chart generation
+│   │   ├── data_transform.py    #   Resampling and smoothing
+│   │   └── smartthings.py       #   SmartThings API client (subscriptions)
+│   ├── storage/                 # Storage backends
+│   │   ├── base.py              #   Abstract interface
+│   │   ├── local_storage.py     #   CSV backend (development)
+│   │   └── table_storage.py     #   Azure Table Storage (production)
 │   └── templates/               # Jinja2 HTML templates
-├── tests/                       # Pytest test suite
 ├── infra/                       # Bicep infrastructure-as-code
-│   ├── main.bicep               # Project infrastructure orchestrator
-│   ├── main.bicepparam          # Parameter values for shared platform
-│   └── modules/                 # Reusable Bicep modules (from commonAzureInfra)
-├── .github/workflows/           # CI/CD pipelines
-│   ├── deploy-infra.yml         # Deploy Bicep on infra/ changes
-│   └── deploy-app.yml           # Deploy app code on push to main
+│   ├── main.bicep               #   Orchestrator (web app + conditional RBAC)
+│   ├── main.bicepparam          #   Parameter values for shared platform
+│   └── modules/                 #   Reusable modules (from commonAzureInfra v2.0)
+├── .github/workflows/
+│   ├── deploy-infra.yml         # Deploys Bicep on infra/ changes (with RBAC guard)
+│   └── deploy-app.yml           # Deploys app code on push to main
 ├── scripts/
-│   ├── seed_data.py            # Seed local storage from historical CSV
-│   └── migrate_csv.py          # Migrate CSV to Azure Table Storage
+│   ├── seed_data.py             # Seed local CSV from historical data
+│   └── migrate_csv.py           # Batch-migrate CSV → Azure Table Storage
+├── tests/                       # Pytest test suite (80 tests)
 ├── docs/
-│   └── plan.md                 # Migration plan and architecture docs
+│   └── plan.deprecated.md       # Historical migration plan (Streamlit → Flask/Azure)
 ├── data/
-│   ├── humidity_data.csv       # Original historical data (3-column format)
-│   └── readings.csv            # Active storage (5-column format)
-├── requirements.txt            # Production dependencies
-├── requirements-dev.txt        # Development dependencies
-└── pyproject.toml              # Project configuration
+│   ├── humidity_data.csv        # Original historical data (3-column format)
+│   └── readings.csv             # Local dev storage (5-column format)
+├── requirements.txt             # Production dependencies
+├── requirements-dev.txt         # Development dependencies (testing, linting)
+└── pyproject.toml               # Project configuration (black, mypy, ruff, pytest)
 ```
 
-## Prerequisites
+## Technology Stack
 
-- Python 3.13 or higher
-- SmartThings account with configured temperature/humidity sensors
-- SmartThings SmartApp registration (for webhook delivery)
-- Azure account (optional, for production deployment)
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Python 3.13, Flask 3.0, Gunicorn |
+| Visualization | Plotly, Pandas |
+| Storage | Azure Table Storage (`azure-data-tables`) |
+| Auth | Managed Identity (`azure-identity`, `DefaultAzureCredential`) |
+| Monitoring | Application Insights, Azure Monitor (metric + log-based alerts) |
+| Infrastructure | Bicep, Azure App Service (B1), Azure Storage Account |
+| CI/CD | GitHub Actions, OIDC federation |
+| Testing | Pytest, mypy, ruff |
 
-## Setup
+## Local Development
 
-### 1. Clone and Create Virtual Environment
+### Prerequisites
+
+- Python 3.13+
+- (Optional) [Azurite](https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azurite) for local Azure Table Storage emulation
+
+### Setup
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/royshea/puerhumidity.git
 cd puerHumidity
 python -m venv .venv
 
@@ -77,198 +108,138 @@ python -m venv .venv
 
 # Linux/Mac
 source .venv/bin/activate
-```
 
-### 2. Install Dependencies
-
-```bash
-# Production only
-pip install -r requirements.txt
-
-# Development (includes testing tools)
+# Install dependencies
 pip install -r requirements-dev.txt
 ```
 
-### 3. Configure Environment Variables
+### Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file (see `.env.example`):
 
 ```env
-# Storage configuration
-STORAGE_TYPE=local                    # 'local' or 'azure'
-LOCAL_DATA_PATH=data/readings.csv     # For local storage
-
-# Azure Table Storage (production — uses Managed Identity, not connection strings)
-AZURE_STORAGE_ACCOUNT_NAME=sthobbyshared  # Storage account name
-AZURE_TABLE_NAME=sensorreadings            # Table name
-
-# Flask settings
-SECRET_KEY=your-secret-key-here
-FLASK_ENV=development
+STORAGE_TYPE=local                    # 'local' for dev, 'azure' for production
+LOCAL_DATA_PATH=data/readings.csv     # Path for local CSV storage
+SECRET_KEY=dev-secret-key             # Any value for local dev
 ```
 
-### 4. Seed Local Data (Development)
+For local Azure Table Storage testing with Azurite:
 
-If you have historical data in `data/humidity_data.csv`, seed the local storage:
+```env
+STORAGE_TYPE=azure
+AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=...;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;
+AZURE_TABLE_NAME=sensorreadings
+```
+
+### Seed Data
 
 ```bash
 python -m scripts.seed_data
 ```
 
-This converts the 3-column format to the 5-column format used by the app.
+Converts historical 3-column data (`data/humidity_data.csv`) to the 5-column format used by the app.
 
-## Running the Application
-
-### Development Server
+### Run
 
 ```bash
 flask run --debug
 ```
 
-The application will be available at http://localhost:5000
+Visit http://localhost:5000 for the chart UI.
 
-### Using the Chart UI
+### Testing
 
-Visit http://localhost:5000 to see the interactive chart. Controls include:
-
-- **Display Mode**: 
-  - `raw` - Show original data points as markers
-  - `resampled` - Forward-fill to regular intervals (stepped line)
-  - `smoothed` - Apply sliding average smoothing
-- **Hours**: Time window to display (default: 504 = 3 weeks)
-- **Resolution**: Resampling interval in minutes (for resampled/smoothed modes)
-- **Smoothing Window**: Sliding average window in minutes (for smoothed mode)
+```bash
+pytest                  # Run all tests (80 tests)
+pytest --cov=app        # With coverage
+pytest tests/test_webhook.py -v   # Specific file
+mypy app/ tests/        # Type checking
+```
 
 ## SmartThings Integration
 
-### Webhook Endpoints
+### Endpoints
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/webhook` | POST | Receive SmartThings lifecycle events |
-| `/` | GET | Chart UI |
-| `/import` | GET/POST | Import historical data with PAT |
+| `/` | GET | Interactive chart UI |
 | `/health` | GET | Health check |
+| `/import` | GET/POST | Import historical data via PAT (disabled by default) |
 
-### SmartThings Lifecycle Events
+### Lifecycle Events
 
-The webhook handler processes these event types:
+The webhook handler (`app/routes/webhook.py`) processes:
 
-- **PING**: Responds with challenge for app verification
-- **CONFIRMATION**: Confirms webhook URL registration
-- **CONFIGURATION**: Returns app metadata and UI pages (required for mobile app)
-- **INSTALL/UPDATE**: Creates device subscriptions
-- **EVENT**: Processes sensor readings (temperature/humidity)
-- **UNINSTALL**: Cleanup when app is removed
+| Lifecycle | Purpose |
+|-----------|---------|
+| **PING** | Echo challenge back for app verification |
+| **CONFIRMATION** | Fetch confirmation URL to register webhook |
+| **CONFIGURATION** | Return app metadata and UI pages for mobile app |
+| **INSTALL** | Store tokens, create device subscriptions |
+| **UPDATE** | Re-create subscriptions on config changes |
+| **EVENT** | Parse sensor readings, write to storage |
+| **UNINSTALL** | Cleanup |
 
-> **Important**: The CONFIGURATION lifecycle must return proper `permissions` (`["r:devices:*", "r:locations:*"]`) or the INSTALL lifecycle will never fire.
+> **Important**: The CONFIGURATION lifecycle must return `permissions: ["r:devices:*", "r:locations:*"]` or the INSTALL lifecycle will never fire. See `docs/plan.deprecated.md` for detailed notes on this gotcha.
 
 ### Registered SmartApp
 
-- **App ID**: `4060b8f2-4ade-4c99-8e71-01306215b942`
-- **Devices**: PuerHumidity, ChestHumidity
+| Field | Value |
+|-------|-------|
+| App ID | `4060b8f2-4ade-4c99-8e71-01306215b942` |
+| Devices | PuerHumidity, ChestHumidity |
+| Target URL | `https://app-puerhumidity.azurewebsites.net/webhook` |
+
+### Chart UI Controls
+
+- **Display Mode**: `raw` (markers), `resampled` (forward-fill stepped line), `smoothed` (sliding average)
+- **Hours**: Time window — default 504 (3 weeks)
+- **Resolution**: Resampling interval in minutes
+- **Smoothing Window**: Sliding average window in minutes
 
 ## Data Schema
 
-### CSV Storage (5-column format)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| device_id | string | SmartThings device UUID |
-| device_label | string | Human-readable device name |
-| reading_type | string | `temperature` or `humidity` |
-| value | float | Sensor value (°F or %) |
-| timestamp | datetime | ISO 8601 timestamp (UTC) |
-
 ### Azure Table Storage
 
-- **Partition Key**: Device label (e.g., "PuerHumidity")
-- **Row Key**: Timestamp + reading type (for uniqueness)
+| Field | Description |
+|-------|-------------|
+| PartitionKey | `{DeviceLabel}-{ReadingType}` (e.g., `PuerHumidity-Humidity`) |
+| RowKey | Reverse timestamp + reading type (newest first) |
+| device_id | SmartThings device UUID |
+| device_label | Human-readable name |
+| reading_type | `temperature` or `humidity` |
+| value | Sensor value (°F or %) |
+| timestamp | ISO 8601 UTC |
 
-## Historical Data Import
+### Local CSV (5-column)
 
-> **Note**: Web-based import is disabled by default in production for security. 
-> See [Enabling Web Import](#enabling-web-import) below.
-
-### Web Import (SmartThings Activities API)
-
-1. Visit `/import` on your deployed app
-2. Generate a PAT at [account.smartthings.com/tokens](https://account.smartthings.com/tokens)
-3. Enter the PAT and submit
-4. The app fetches all available history with pagination
-
-The Activities API provides ~7 days of history.
-
-### Enabling Web Import
-
-Import is disabled by default to prevent unauthorized data writes. To temporarily enable:
-
-```powershell
-# Enable import
-az webapp config appsettings set `
-    --name app-puerhumidity `
-    --resource-group rg-shared-platform `
-    --settings ENABLE_IMPORT=true
-
-# Perform your import at /import
-
-# Disable import again
-az webapp config appsettings delete `
-    --name app-puerhumidity `
-    --resource-group rg-shared-platform `
-    --setting-names ENABLE_IMPORT
-```
-
-### CSV Migration
-
-For larger historical datasets, use the migration script:
-
-```bash
-python scripts/migrate_csv.py
-```
-
-The script uses batch operations (100 entities per transaction) for efficient bulk loading.
-See `docs/shared-infra-migration.md` for details on migrating data between storage accounts.
-
-## Testing
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=app
-
-# Run specific test file
-pytest tests/test_chart.py -v
-```
+`device_id, device_label, reading_type, value, timestamp`
 
 ## Azure Deployment
 
-This project runs on the shared hobby platform (`rg-shared-platform`, westus3) using infrastructure defined in [commonAzureInfra](https://github.com/royshea/commonAzureInfra). Deployment is fully automated via GitHub Actions.
-
-### Architecture
+### Infrastructure
 
 | Resource | Value |
 |----------|-------|
 | Resource Group | `rg-shared-platform` (westus3) |
-| App Service Plan | `asp-hobby` (B1 shared) |
-| Web App | `app-puerhumidity` |
+| App Service Plan | `asp-hobby` (B1 shared with other hobby projects) |
+| Web App | `app-puerhumidity` (`alwaysOn: true` — webhook receiver) |
 | Storage Account | `sthobbyshared` (shared) |
-| Auth to storage | Managed Identity + RBAC (Table Data Contributor) |
-| Deployment | GitHub Actions CI/CD |
-| IaC | Bicep in `infra/` directory |
+| Application Insights | `appi-hobby` (shared, daily cap 100 MB) |
+| Auth | Managed Identity → Table Data Contributor RBAC |
+| IaC | Bicep in `infra/` (modules from [commonAzureInfra](https://github.com/royshea/commonAzureInfra) v2.0) |
 
-### CI/CD Workflows
+### CI/CD Pipelines
 
 Pushing to `main` triggers automatic deployment:
 
-- **`deploy-infra.yml`** — Runs when `infra/**` files change. Previews changes (what-if) then deploys Bicep templates to `rg-shared-platform`.
-- **`deploy-app.yml`** — Runs when application code changes (ignores `infra/`, `docs/`, `*.md`). Builds and deploys the Python app to Azure App Service.
+- **`deploy-infra.yml`** — Runs when `infra/**` files change. Includes an RBAC change guard that fails the pipeline if any RBAC-related files are modified (RBAC must be bootstrapped manually).
+- **`deploy-app.yml`** — Runs when app code changes (ignores `infra/`, `docs/`, `*.md`). Zips and deploys to Azure App Service.
 
 Both workflows authenticate via OIDC federation — no stored credentials.
 
-### Required GitHub Secrets
+### GitHub Secrets
 
 | Secret | Description |
 |--------|-------------|
@@ -276,18 +247,54 @@ Both workflows authenticate via OIDC federation — no stored credentials.
 | `AZURE_TENANT_ID` | Azure AD tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
 
-### Environment Variables (Azure)
+### App Settings
 
-Configured via Bicep in `infra/main.bicep`:
+Managed via Bicep (`infra/main.bicep`):
 
-| Variable | Description |
-|----------|-------------|
-| `STORAGE_TYPE` | `azure` for production |
-| `AZURE_STORAGE_ACCOUNT_NAME` | Shared storage account name |
-| `AZURE_TABLE_NAME` | Table name (default: `sensorreadings`) |
-| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` to install dependencies |
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `STORAGE_TYPE` | `azure` | Use Azure Table Storage |
+| `AZURE_STORAGE_ACCOUNT_NAME` | `sthobbyshared` | Shared storage account |
+| `AZURE_TABLE_NAME` | `sensorreadings` | Table name |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` | Install pip dependencies on deploy |
 
-`SECRET_KEY` is set manually via `az webapp config appsettings set` (not in Bicep, since it's a secret).
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | (from `appi-hobby`) | Application Insights telemetry |
+
+`SECRET_KEY` is set manually (not in Bicep — it's a secret):
+
+```bash
+az webapp config appsettings set \
+    --name app-puerhumidity \
+    --resource-group rg-shared-platform \
+    --settings SECRET_KEY='<random-secret>'
+```
+
+### Monitoring & Alerting
+
+Connected to the shared **Application Insights** (`appi-hobby`) for per-request telemetry. Four alert rules are defined in `infra/modules/alerts.bicep`, all wired to the shared Action Group (`ag-hobby-email`) from commonAzureInfra:
+
+| Alert | Type | Fires when |
+|-------|------|-----------|
+| Health check (Sev 1) | Metric | Health probes drop below 100% |
+| HTTP 5xx (Sev 2) | Metric | > 3 server errors in 5 minutes |
+| No webhook data (Sev 2) | Log query | Zero successful POST /webhook requests in 1 hour |
+| Slow response (Sev 3) | Metric | Average response > 5 seconds |
+
+The "no webhook data" alert uses a **scheduled query rule** against Application Insights rather than a platform metric — this allows filtering to just the `/webhook` endpoint, excluding health check probes that would mask a real data flow interruption.
+
+### RBAC Bootstrap
+
+The CI/CD service principal has Contributor but not User Access Administrator. RBAC role assignments must be deployed manually when the web app's managed identity changes:
+
+```bash
+az deployment group create \
+    --resource-group rg-shared-platform \
+    --template-file infra/main.bicep \
+    --parameters infra/main.bicepparam \
+    --parameters deployRbac=true
+```
+
+The `deployRbac` parameter (default `false`) gates the RBAC module. The pipeline includes a guard step that fails if RBAC files are modified, preventing accidental attempts to deploy RBAC through CI.
 
 ### Verify Deployment
 
@@ -301,32 +308,47 @@ curl -X POST https://app-puerhumidity.azurewebsites.net/webhook \
     -d '{"lifecycle": "PING", "pingData": {"challenge": "test"}}'
 ```
 
-### Viewing Logs
+### View Logs
 
 ```bash
-# Runtime logs (live tail)
 az webapp log tail --name app-puerhumidity --resource-group rg-shared-platform
 ```
 
-## Troubleshooting
+## Historical Data Import
 
-**Webhook not receiving events**: Ensure your webhook URL is publicly accessible (HTTPS required for production). Use LocalTunnel for development.
-
-**Timezone comparison errors**: All timestamps should be UTC. The app normalizes naive datetimes to UTC.
-
-**No data in chart**: Run the seed script or wait for SmartThings events. Check that `data/readings.csv` exists and has data.
-
-## Development
-
-### Type Checking
+Web-based import is disabled by default in production. To temporarily enable:
 
 ```bash
-mypy app/ tests/
+# Enable
+az webapp config appsettings set \
+    --name app-puerhumidity \
+    --resource-group rg-shared-platform \
+    --settings ENABLE_IMPORT=true
+
+# Import at https://app-puerhumidity.azurewebsites.net/import
+# Uses a SmartThings PAT (get one at https://account.smartthings.com/tokens)
+# The Activities API provides ~7 days of history
+
+# Disable
+az webapp config appsettings delete \
+    --name app-puerhumidity \
+    --resource-group rg-shared-platform \
+    --setting-names ENABLE_IMPORT
 ```
 
-### Code Style
+For bulk CSV migration, use `python scripts/migrate_csv.py` (batch upserts, 100 entities per transaction).
 
-The project uses standard Python conventions. Consider using `ruff` or `black` for formatting.
+## Troubleshooting
+
+**Webhook not receiving events**: Check the SmartThings Developer Workspace — verify the target URL is `https://app-puerhumidity.azurewebsites.net/webhook`. If the SmartApp was reinstalled, the INSTALL lifecycle must succeed to create subscriptions (check app logs for "Subscriptions created").
+
+**App returns 500**: Likely a storage auth issue. Verify the web app's managed identity has Table Data Contributor on `sthobbyshared`. Run `az role assignment list --scope /subscriptions/.../storageAccounts/sthobbyshared --role "Storage Table Data Contributor"`.
+
+**No data in chart**: In production, wait for SmartThings sensor events (typically every 5–15 minutes). For local dev, run `python -m scripts.seed_data` to populate `data/readings.csv`.
+
+**Timezone errors**: All timestamps should be UTC. The app normalizes naive datetimes to UTC.
+
+**RBAC deploy fails in CI**: By design — the pipeline guards against RBAC changes. Deploy RBAC manually with `deployRbac=true` (see [RBAC Bootstrap](#rbac-bootstrap)).
 
 ## License
 
