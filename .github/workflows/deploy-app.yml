@@ -1,24 +1,66 @@
 name: Deploy to App Service
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
-    paths-ignore: ['infra/**', 'docs/**', '*.md']
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 env:
   AZURE_WEBAPP_NAME: 'app-puerhumidity'
   PYTHON_VERSION: '3.13'
 
+concurrency:
+  group: deploy-app
+  cancel-in-progress: true
+
 jobs:
-  build-and-deploy:
+  check-changes:
     runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
+    outputs:
+      app_changed: ${{ steps.filter.outputs.app_changed }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Check for app-relevant changes
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "app_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Compare with parent commit to see what changed
+          changed=$(git diff --name-only HEAD~1 HEAD -- . ':!infra/' ':!docs/' ':!*.md' ':!AGENTS.md' || echo "unknown")
+          if [ -z "$changed" ]; then
+            echo "No app-relevant files changed — skipping deploy"
+            echo "app_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "App-relevant files changed:"
+            echo "$changed"
+            echo "app_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: check-changes
+    if: needs.check-changes.outputs.app_changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Azure Login (OIDC)
         uses: azure/login@v2
@@ -38,3 +80,22 @@ jobs:
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: .
+
+      - name: Post-deploy smoke test
+        run: |
+          echo "Waiting for app to restart after deployment..."
+          max_attempts=10
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt/$max_attempts..."
+            status=$(curl -s -o /dev/null -w "%{http_code}" https://app-puerhumidity.azurewebsites.net/health || echo "000")
+            if [ "$status" = "200" ]; then
+              echo "✅ Smoke test passed (HTTP $status)"
+              exit 0
+            fi
+            echo "  Got HTTP $status, retrying in 15s..."
+            sleep 15
+            attempt=$((attempt + 1))
+          done
+          echo "::error::❌ Smoke test failed after $max_attempts attempts"
+          exit 1
