@@ -123,13 +123,12 @@ resource healthCheckAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 // environment, legitimate multi-hour gaps can occur (especially overnight). The original 1-hour
 // window false-positived frequently.
 //
-// CONSERVATIVE FIX: 6-hour lookback + 2-consecutive-failure gating. Evaluation runs hourly; requires
-// zero webhook traffic for 2 consecutive evaluations (≈6-7 hours of silence) before firing. This
-// stops firing on normal stateChangeOnly gaps while catching genuinely dead sensors within ~7 hours.
-//
-// PROVISIONAL THRESHOLDS: App Insights telemetry only covers ~1 hour of data as of 2026-06-21 (the
-// 65+ days of *sensor readings* live in Azure Table Storage, not App Insights). These parameters
-// should be revisited once several weeks of actual webhook request telemetry accumulates (see Issue #2).
+// EMPIRICALLY TUNED: appi-hobby is workspace-based App Insights (law-hobby/AppRequests), and
+// successful POST /webhook telemetry flows continuously: ~180/day (~7.5/hr) over the trailing 30 days.
+// SmartThings stateChangeOnly:True still creates legitimate gaps; observed 30d gaps were median 6 min,
+// p95 23 min, max 130 min, with 24 gaps >60 min that false-triggered the old PT1H window.
+// PT6H lookback + PT1H evaluation + 2/2 failing periods means ~6-7h sustained silence before firing,
+// clearing the observed max gap with margin while still catching a dead sensor within hours.
 resource noWebhookDataAlert 'Microsoft.Insights/scheduledQueryRules@2022-06-15' = if (!empty(appInsightsId)) {
   name: 'alert-${webAppName}-no-webhook-data'
   location: location
