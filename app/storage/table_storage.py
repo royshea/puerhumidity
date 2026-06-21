@@ -1,6 +1,6 @@
 """Azure Table Storage backend implementation."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from azure.core.exceptions import ResourceNotFoundError
 from azure.data.tables import TableClient, TableServiceClient
@@ -61,7 +61,9 @@ class TableStorage(StorageBase):
     def _create_service_client(self) -> TableServiceClient:
         """Create a TableServiceClient using the configured auth method."""
         if self._account_url:
-            return TableServiceClient(endpoint=self._account_url, credential=DefaultAzureCredential())
+            return TableServiceClient(
+                endpoint=self._account_url, credential=DefaultAzureCredential()
+            )
         return TableServiceClient.from_connection_string(self._connection_string)  # type: ignore[arg-type]
 
     def _get_table_client(self) -> TableClient:
@@ -99,7 +101,7 @@ class TableStorage(StorageBase):
         """
         # Ensure timezone-aware
         if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
+            timestamp = timestamp.replace(tzinfo=UTC)
         unix_ts = int(timestamp.timestamp())
         reverse_ts = self.MAX_TIMESTAMP - unix_ts
         return f"{reverse_ts:010d}"
@@ -115,7 +117,7 @@ class TableStorage(StorageBase):
         """
         reverse_ts = int(row_key)
         unix_ts = self.MAX_TIMESTAMP - reverse_ts
-        return datetime.fromtimestamp(unix_ts, tz=timezone.utc)
+        return datetime.fromtimestamp(unix_ts, tz=UTC)
 
     def write_reading(self, reading: SensorReading) -> None:
         """Write a single sensor reading to Table Storage.
@@ -164,7 +166,7 @@ class TableStorage(StorageBase):
             batch_size = 100
             for i in range(0, len(partition_readings), batch_size):
                 batch_readings = partition_readings[i : i + batch_size]
-                
+
                 # Build batch operations
                 operations = []
                 for reading in batch_readings:
@@ -188,7 +190,8 @@ class TableStorage(StorageBase):
                     import logging
                     logger = logging.getLogger(__name__)
                     logger.warning(
-                        "Batch write failed for partition %s, falling back to individual writes: %s",
+                        "Batch write failed for partition %s, "
+                        "falling back to individual writes: %s",
                         partition_key,
                         e,
                     )
@@ -211,7 +214,7 @@ class TableStorage(StorageBase):
         Returns:
             List of sensor readings, sorted by timestamp ascending.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         cutoff_row_key = self._make_row_key(cutoff)
 
         # RowKey < cutoff_row_key means timestamp > cutoff (due to reverse)
@@ -234,7 +237,7 @@ class TableStorage(StorageBase):
         Returns:
             List of all sensor readings, sorted by timestamp ascending.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         cutoff_row_key = self._make_row_key(cutoff)
 
         # Query all partitions where RowKey is within the time window
@@ -285,7 +288,7 @@ class TableStorage(StorageBase):
 
         # Ensure timezone-aware
         if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
+            timestamp = timestamp.replace(tzinfo=UTC)
 
         reading_type = entity["reading_type"]
         if reading_type not in ("temperature", "humidity"):
@@ -294,7 +297,7 @@ class TableStorage(StorageBase):
         return SensorReading(
             device_id=str(entity["device_id"]),
             device_label=str(entity["device_label"]),
-            reading_type=reading_type,  # type: ignore[arg-type]
+            reading_type=reading_type,
             value=float(entity["value"]),  # type: ignore[arg-type]
             timestamp=timestamp,
         )

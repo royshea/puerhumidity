@@ -1,6 +1,6 @@
 """Tests for chart and data transformation services."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -38,7 +38,7 @@ class TestForwardFillToTimeseries:
 
     def test_single_reading_fills_forward(self) -> None:
         """Test that a single reading fills forward to time slots."""
-        base_time = datetime(2026, 1, 20, 12, 5, 0, tzinfo=timezone.utc)
+        base_time = datetime(2026, 1, 20, 12, 5, 0, tzinfo=UTC)
         readings = [self._make_reading(65.0, base_time)]
 
         result = forward_fill_to_timeseries(readings, resolution_minutes=10)
@@ -49,7 +49,7 @@ class TestForwardFillToTimeseries:
 
     def test_creates_regular_intervals(self) -> None:
         """Test that output has regular 10-minute intervals."""
-        base_time = datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+        base_time = datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
         readings = [
             self._make_reading(60.0, base_time),
             self._make_reading(70.0, base_time + timedelta(minutes=25)),
@@ -66,7 +66,7 @@ class TestForwardFillToTimeseries:
 
     def test_forward_fill_carries_last_value(self) -> None:
         """Test that values are carried forward until next reading."""
-        base_time = datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+        base_time = datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
         readings = [
             self._make_reading(60.0, base_time),
             self._make_reading(70.0, base_time + timedelta(minutes=25)),
@@ -84,7 +84,7 @@ class TestForwardFillToTimeseries:
     def test_no_backfill_before_first_reading(self) -> None:
         """Test that time slots before first reading are omitted."""
         # Reading at 12:15, but slot at 12:10 should be empty
-        base_time = datetime(2026, 1, 20, 12, 15, 0, tzinfo=timezone.utc)
+        base_time = datetime(2026, 1, 20, 12, 15, 0, tzinfo=UTC)
         readings = [self._make_reading(65.0, base_time)]
 
         result = forward_fill_to_timeseries(readings, resolution_minutes=10)
@@ -93,13 +93,13 @@ class TestForwardFillToTimeseries:
         # Actually 12:10 is before 12:15, so no value yet
         # 12:20 is first slot after 12:15 but 12:15 sets value, so 12:20 has it
         timestamps = [r.timestamp for r in result]
-        assert datetime(2026, 1, 20, 12, 10, 0, tzinfo=timezone.utc) not in timestamps
+        assert datetime(2026, 1, 20, 12, 10, 0, tzinfo=UTC) not in timestamps
 
     def test_preserves_device_info(self) -> None:
         """Test that device info is preserved in output."""
         reading = self._make_reading(
             value=65.0,
-            timestamp=datetime(2026, 1, 20, 12, 5, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2026, 1, 20, 12, 5, 0, tzinfo=UTC),
             device_label="PuerHumidity",
         )
 
@@ -111,7 +111,7 @@ class TestForwardFillToTimeseries:
 
     def test_handles_multiple_sensors(self) -> None:
         """Test that multiple sensors are processed separately."""
-        base_time = datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+        base_time = datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
         readings = [
             self._make_reading(65.0, base_time, "humidity", "SensorA"),
             self._make_reading(70.0, base_time, "temperature", "SensorB"),
@@ -119,7 +119,7 @@ class TestForwardFillToTimeseries:
 
         result = forward_fill_to_timeseries(readings)
 
-        sensor_names = set(r.sensor_name for r in result)
+        sensor_names = {r.sensor_name for r in result}
         assert "SensorA-Humidity" in sensor_names
         assert "SensorB-Temperature" in sensor_names
 
@@ -151,7 +151,7 @@ class TestSlidingAverage:
         """Test that single reading returns its own value."""
         readings = [
             self._make_reading(
-                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
             )
         ]
         result = sliding_average(readings, window_minutes=60)
@@ -160,7 +160,7 @@ class TestSlidingAverage:
 
     def test_averages_over_window(self) -> None:
         """Test that values are averaged over the window."""
-        base_time = datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+        base_time = datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
         # 6 readings, each 10 minutes apart
         readings = [
             self._make_reading(60.0, base_time),
@@ -180,7 +180,7 @@ class TestSlidingAverage:
 
     def test_partial_window_at_start(self) -> None:
         """Test that early readings use partial window."""
-        base_time = datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+        base_time = datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
         readings = [
             self._make_reading(60.0, base_time),
             self._make_reading(70.0, base_time + timedelta(minutes=10)),
@@ -200,7 +200,7 @@ class TestSlidingAverage:
     def test_preserves_device_info(self) -> None:
         """Test that device info is preserved."""
         reading = self._make_reading(
-            65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+            65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
         )
         result = sliding_average([reading])
         assert result[0].device_id == "device-123"
@@ -240,7 +240,7 @@ class TestGenerateChart:
         """Test that raw mode includes raw data traces."""
         readings = [
             self._make_reading(
-                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
             )
         ]
         result = generate_chart(readings, display_mode="raw")
@@ -250,7 +250,7 @@ class TestGenerateChart:
         """Test that resampled mode includes resampled data traces."""
         readings = [
             self._make_reading(
-                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
             )
         ]
         result = generate_chart(readings, display_mode="resampled")
@@ -260,7 +260,7 @@ class TestGenerateChart:
         """Test that smoothed mode includes smoothed data traces."""
         readings = [
             self._make_reading(
-                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
             )
         ]
         result = generate_chart(readings, display_mode="smoothed")
@@ -276,7 +276,7 @@ class TestGenerateChart:
         readings = [
             self._make_reading(
                 72.0,
-                datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc),
+                datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC),
                 reading_type="temperature",
             )
         ]
@@ -288,7 +288,7 @@ class TestGenerateChart:
         readings = [
             self._make_reading(
                 65.0,
-                datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc),
+                datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC),
                 reading_type="humidity",
             )
         ]
@@ -304,7 +304,7 @@ class TestGenerateChart:
         """Test that custom resolution is accepted."""
         readings = [
             self._make_reading(
-                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
             )
         ]
         # Should not raise
@@ -315,7 +315,7 @@ class TestGenerateChart:
         """Test that custom smoothing window is accepted."""
         readings = [
             self._make_reading(
-                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+                65.0, datetime(2026, 1, 20, 12, 0, 0, tzinfo=UTC)
             )
         ]
         # Should not raise

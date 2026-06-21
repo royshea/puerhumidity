@@ -9,9 +9,8 @@ from datetime import datetime
 from pathlib import Path
 
 from app.models import SensorReading
-from app.storage import get_storage, init_storage
+from app.storage import init_storage
 from app.storage.local_storage import LocalStorage
-
 
 # Device ID mapping (reverse of the label mapping)
 DEVICE_IDS = {
@@ -58,12 +57,8 @@ def load_csv_data(csv_path: Path) -> list[SensorReading]:
     readings: list[SensorReading] = []
 
     with open(csv_path, newline="", encoding="utf-8") as f:
-        # Read first line to detect format
-        first_line = f.readline().strip()
-        f.seek(0)  # Reset to beginning
-
         reader = csv.reader(f)
-        header = next(reader)  # Skip header
+        next(reader)  # Skip header
 
         for row in reader:
             try:
@@ -97,7 +92,7 @@ def load_csv_data(csv_path: Path) -> list[SensorReading]:
                         timestamp=timestamp,
                     )
                 )
-            except (ValueError, KeyError) as e:
+            except (ValueError, KeyError):
                 # Skip malformed rows
                 continue
 

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from flask.testing import FlaskClient
 
 from app.services import SmartThingsService
 
@@ -145,7 +146,7 @@ class TestWebhookInstallHandler:
     """Tests for INSTALL lifecycle handler with subscription creation."""
 
     @pytest.fixture
-    def client(self):
+    def client(self) -> FlaskClient:
         """Create test client."""
         from app import create_app
 
@@ -154,7 +155,7 @@ class TestWebhookInstallHandler:
 
     @patch("app.routes.webhook.SmartThingsService")
     def test_install_creates_subscriptions(
-        self, mock_service_class: MagicMock, client
+        self, mock_service_class: MagicMock, client: FlaskClient
     ) -> None:
         """Test INSTALL lifecycle creates subscriptions."""
         mock_service = MagicMock()
@@ -180,7 +181,7 @@ class TestWebhookInstallHandler:
 
     @patch("app.routes.webhook.SmartThingsService")
     def test_install_missing_auth_token(
-        self, mock_service_class: MagicMock, client
+        self, mock_service_class: MagicMock, client: FlaskClient
     ) -> None:
         """Test INSTALL handles missing auth token gracefully."""
         mock_service = MagicMock()
@@ -206,7 +207,7 @@ class TestWebhookUpdateHandler:
     """Tests for UPDATE lifecycle handler with subscription recreation."""
 
     @pytest.fixture
-    def client(self):
+    def client(self) -> FlaskClient:
         """Create test client."""
         from app import create_app
 
@@ -215,7 +216,7 @@ class TestWebhookUpdateHandler:
 
     @patch("app.routes.webhook.SmartThingsService")
     def test_update_recreates_subscriptions(
-        self, mock_service_class: MagicMock, client
+        self, mock_service_class: MagicMock, client: FlaskClient
     ) -> None:
         """Test UPDATE lifecycle deletes and recreates subscriptions."""
         mock_service = MagicMock()
@@ -244,7 +245,7 @@ class TestWebhookUpdateHandler:
 
     @patch("app.routes.webhook.SmartThingsService")
     def test_update_handles_service_error(
-        self, mock_service_class: MagicMock, client
+        self, mock_service_class: MagicMock, client: FlaskClient
     ) -> None:
         """Test UPDATE handles service errors gracefully."""
         mock_service = MagicMock()
