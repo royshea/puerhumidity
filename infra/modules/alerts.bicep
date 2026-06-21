@@ -114,23 +114,33 @@ resource healthCheckAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 }
 
 // Alert: No webhook data flowing (log-based, requires Application Insights)
-// Severity 2 (Warning) — fires when zero successful POST /webhook requests in 1 hour.
+// Severity 2 (Warning) — fires after sustained zero successful POST /webhook requests.
 // Uses a scheduled query rule against Application Insights request telemetry, which
 // allows filtering to just the /webhook endpoint (platform metrics are aggregate only).
-// Historic analysis: post-migration data shows zero hourly gaps across 65+ days (~10
-// readings/hour), so any full hour without webhook traffic is a genuine anomaly.
+//
+// CONTEXT: SmartThings subscriptions use stateChangeOnly:True (app/services/smartthings.py:66),
+// so EVENT webhooks arrive only when sensor values CHANGE. In a stable humidity-controlled
+// environment, legitimate multi-hour gaps can occur (especially overnight). The original 1-hour
+// window false-positived frequently.
+//
+// EMPIRICALLY TUNED: appi-hobby is workspace-based App Insights (law-hobby/AppRequests), and
+// successful POST /webhook telemetry flows continuously: ~180/day (~7.5/hr) over the trailing 30 days.
+// SmartThings stateChangeOnly:True still creates legitimate gaps; observed 30d gaps were median 6 min,
+// p95 23 min, max 130 min, with 24 gaps >60 min that false-triggered the old PT1H window.
+// PT6H lookback + PT1H evaluation + 2/2 failing periods means ~6-7h sustained silence before firing,
+// clearing the observed max gap with margin while still catching a dead sensor within hours.
 resource noWebhookDataAlert 'Microsoft.Insights/scheduledQueryRules@2022-06-15' = if (!empty(appInsightsId)) {
   name: 'alert-${webAppName}-no-webhook-data'
   location: location
   properties: {
     displayName: 'No webhook data flowing'
-    description: 'No successful POST /webhook requests in the past hour — sensor data flow may have stopped. Requires Application Insights telemetry to be flowing (verify after first deploy).'
+    description: 'No successful POST /webhook requests in 6+ hours (2 consecutive hourly checks) — sensor data flow may have stopped. Thresholds are provisional pending accumulated App Insights telemetry (Issue #2).'
     severity: 2
     enabled: true
     scopes: [appInsightsId]
     targetResourceTypes: ['Microsoft.Insights/components']
-    evaluationFrequency: 'PT15M'
-    windowSize: 'PT1H'
+    evaluationFrequency: 'PT1H'
+    windowSize: 'PT6H'
     criteria: {
       allOf: [
         {
@@ -139,8 +149,8 @@ resource noWebhookDataAlert 'Microsoft.Insights/scheduledQueryRules@2022-06-15' 
           operator: 'LessThanOrEqual'
           threshold: 0
           failingPeriods: {
-            numberOfEvaluationPeriods: 1
-            minFailingPeriodsToAlert: 1
+            numberOfEvaluationPeriods: 2
+            minFailingPeriodsToAlert: 2
           }
         }
       ]
