@@ -1,14 +1,18 @@
 """Tests for storage backends."""
 
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from app.models import SensorReading
 from app.storage.base import StorageBase
 from app.storage.local_storage import LocalStorage
+
+if TYPE_CHECKING:
+    from app.storage.table_storage import TableStorage
 
 
 class TestLocalStorage:
@@ -33,7 +37,7 @@ class TestLocalStorage:
             device_label="TestSensor",
             reading_type="humidity",
             value=65.0,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
     def test_implements_storage_base(self, storage: LocalStorage) -> None:
@@ -68,7 +72,7 @@ class TestLocalStorage:
 
     def test_write_readings_batch(self, storage: LocalStorage) -> None:
         """Test writing multiple readings at once."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         readings = [
             SensorReading(
                 device_id="device-1",
@@ -88,7 +92,7 @@ class TestLocalStorage:
 
     def test_get_readings_filters_by_sensor_name(self, storage: LocalStorage) -> None:
         """Test that get_readings filters by sensor name."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         readings = [
             SensorReading(
                 device_id="device-1",
@@ -124,7 +128,7 @@ class TestLocalStorage:
 
     def test_get_readings_filters_by_time(self, storage: LocalStorage) -> None:
         """Test that get_readings respects the hours parameter."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         readings = [
             SensorReading(
                 device_id="device-1",
@@ -165,7 +169,7 @@ class TestLocalStorage:
 
     def test_get_readings_sorted_by_timestamp(self, storage: LocalStorage) -> None:
         """Test that readings are returned sorted by timestamp ascending."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Write in random order
         readings = [
             SensorReading(
@@ -199,7 +203,7 @@ class TestLocalStorage:
 
     def test_get_all_readings(self, storage: LocalStorage) -> None:
         """Test getting all readings across sensors."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         readings = [
             SensorReading(
                 device_id="device-1",
@@ -223,7 +227,7 @@ class TestLocalStorage:
 
     def test_get_latest_reading(self, storage: LocalStorage) -> None:
         """Test getting the most recent reading for a sensor."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         readings = [
             SensorReading(
                 device_id="device-1",
@@ -299,15 +303,18 @@ class TestTableStorage:
 
         Returns None if Azurite is not available.
         """
-        from app.storage.table_storage import TableStorage
-
         # Use a unique table name for each test run to avoid conflicts
         import uuid
+
+        from app.storage.table_storage import TableStorage
 
         table_name = f"test{uuid.uuid4().hex[:8]}"
 
         try:
-            storage = TableStorage(connection_string=self.AZURITE_CONNECTION_STRING, table_name=table_name)
+            storage = TableStorage(
+                connection_string=self.AZURITE_CONNECTION_STRING,
+                table_name=table_name,
+            )
             return storage
         except Exception:
             pytest.skip("Azurite not available - skipping Table Storage tests")
@@ -336,7 +343,7 @@ class TestTableStorage:
 
     def test_write_and_read_reading(self, table_storage: "TableStorage", cleanup_table) -> None:
         """Test writing and reading a single reading."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         reading = SensorReading(
             device_id="device-123",
             device_label="TestSensor",
@@ -354,7 +361,7 @@ class TestTableStorage:
 
     def test_write_readings_batch(self, table_storage: "TableStorage", cleanup_table) -> None:
         """Test writing multiple readings at once."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         readings = [
             SensorReading(
                 device_id="device-1",
@@ -376,7 +383,7 @@ class TestTableStorage:
         self, table_storage: "TableStorage", cleanup_table
     ) -> None:
         """Test that get_readings filters by sensor name."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         readings = [
             SensorReading(
                 device_id="device-1",
@@ -410,7 +417,7 @@ class TestTableStorage:
         self, table_storage: "TableStorage", cleanup_table
     ) -> None:
         """Test that get_readings respects the hours parameter."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         readings = [
             SensorReading(
                 device_id="device-1",
@@ -449,7 +456,7 @@ class TestTableStorage:
         self, table_storage: "TableStorage", cleanup_table
     ) -> None:
         """Test that readings are returned sorted by timestamp ascending."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Write in random order
         readings = [
             SensorReading(
@@ -483,7 +490,7 @@ class TestTableStorage:
 
     def test_get_latest_reading(self, table_storage: "TableStorage", cleanup_table) -> None:
         """Test getting the most recent reading for a sensor."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         readings = [
             SensorReading(
                 device_id="device-1",
@@ -525,8 +532,8 @@ class TestTableStorage:
     ) -> None:
         """Test that reverse timestamp produces correct ordering."""
         # Verify the row key calculation
-        earlier = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-        later = datetime(2026, 1, 1, 13, 0, 0, tzinfo=timezone.utc)
+        earlier = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+        later = datetime(2026, 1, 1, 13, 0, 0, tzinfo=UTC)
 
         earlier_key = table_storage._make_row_key(earlier)
         later_key = table_storage._make_row_key(later)
@@ -538,7 +545,7 @@ class TestTableStorage:
         self, table_storage: "TableStorage", cleanup_table
     ) -> None:
         """Test that writing same timestamp twice overwrites the value."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         reading1 = SensorReading(
             device_id="device-1",

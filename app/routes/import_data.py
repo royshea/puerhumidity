@@ -6,7 +6,7 @@ To enable, set ENABLE_IMPORT=true in environment variables and redeploy.
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -112,12 +112,12 @@ def _fetch_activities(pat: str, location_id: str) -> list[SensorReading]:
 
     device_labels = current_app.config.get("DEVICE_LABELS", {})
     all_items: list[dict] = []
-    
+
     # Start with base URL, then follow pagination
     url: str | None = f"https://api.smartthings.com/activities?location={location_id}&limit=100"
     page_count = 0
     max_pages = 100  # Safety limit to prevent infinite loops
-    
+
     while url and page_count < max_pages:
         page_count += 1
         logger.info("Fetching activities page %d from %s", page_count, url[:80])
@@ -129,12 +129,12 @@ def _fetch_activities(pat: str, location_id: str) -> list[SensorReading]:
         items = data.get("items", [])
         all_items.extend(items)
         logger.info("Page %d: fetched %d items (total: %d)", page_count, len(items), len(all_items))
-        
+
         # Check for next page - SmartThings uses _links.next.href
         links = data.get("_links", {})
         next_link = links.get("next", {})
         url = next_link.get("href") if next_link else None
-        
+
         # If no more items, stop
         if not items:
             break
@@ -201,7 +201,7 @@ def _parse_activity(item: dict[str, Any], device_labels: dict[str, str]) -> Sens
         # Handle the timezone format
         timestamp = datetime.fromisoformat(timestamp_str.replace("+00:00", "+00:00"))
         if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
+            timestamp = timestamp.replace(tzinfo=UTC)
     except (ValueError, TypeError):
         return None
 

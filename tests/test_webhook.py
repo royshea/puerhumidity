@@ -1,7 +1,6 @@
 """Tests for webhook routes."""
 
 import tempfile
-from pathlib import Path
 
 import pytest
 from flask import Flask

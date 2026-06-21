@@ -1,7 +1,7 @@
 """Pytest fixtures for PuerHumidity tests."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Generator
+from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from flask import Flask
@@ -49,7 +49,7 @@ def sample_reading() -> SensorReading:
         device_label="PuerHumidity",
         reading_type="humidity",
         value=65.0,
-        timestamp=datetime(2026, 1, 17, 12, 0, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 1, 17, 12, 0, 0, tzinfo=UTC),
     )
 
 

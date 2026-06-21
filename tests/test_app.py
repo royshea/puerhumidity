@@ -51,6 +51,9 @@ class TestCreateApp:
         app = create_app()
         client = app.test_client()
 
-        response = client.post("/webhook", json={"lifecycle": "PING", "pingData": {"challenge": "test"}})
+        response = client.post(
+            "/webhook",
+            json={"lifecycle": "PING", "pingData": {"challenge": "test"}},
+        )
 
         assert response.status_code == 200
