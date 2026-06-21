@@ -6,7 +6,7 @@ pytest>=7.4.0
 pytest-cov>=4.1.0
 
 # Code quality
-black>=24.0.0
+black>=26.5.1
 isort>=5.13.0
 mypy>=1.8.0
 ruff>=0.1.0
