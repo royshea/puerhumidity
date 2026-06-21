@@ -11,6 +11,7 @@ from typing import Any
 
 import requests
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from werkzeug.wrappers.response import Response as WerkzeugResponse
 
 from app.models import SensorReading
 from app.storage import get_storage
@@ -36,7 +37,7 @@ def import_form() -> str:
 
 
 @import_bp.route("/import", methods=["POST"])
-def import_data() -> str:
+def import_data() -> WerkzeugResponse | str:
     """Import historical data from SmartThings Activities API.
 
     Uses a Personal Access Token (PAT) provided by the user.
@@ -111,7 +112,7 @@ def _fetch_activities(pat: str, location_id: str) -> list[SensorReading]:
     }
 
     device_labels = current_app.config.get("DEVICE_LABELS", {})
-    all_items: list[dict] = []
+    all_items: list[dict[str, Any]] = []
 
     # Start with base URL, then follow pagination
     url: str | None = f"https://api.smartthings.com/activities?location={location_id}&limit=100"
@@ -197,6 +198,8 @@ def _parse_activity(item: dict[str, Any], device_labels: dict[str, str]) -> Sens
         return None
 
     # Parse timestamp (format: "2026-01-17T23:07:44.000+00:00")
+    if not isinstance(timestamp_str, str):
+        return None
     try:
         # Handle the timezone format
         timestamp = datetime.fromisoformat(timestamp_str.replace("+00:00", "+00:00"))

@@ -89,7 +89,7 @@ def sample_readings() -> list[SensorReading]:
 
 
 @pytest.fixture
-def ping_payload() -> dict:
+def ping_payload() -> dict[str, object]:
     """Create a sample PING lifecycle payload.
 
     Returns:
@@ -99,7 +99,7 @@ def ping_payload() -> dict:
 
 
 @pytest.fixture
-def event_payload() -> dict:
+def event_payload() -> dict[str, object]:
     """Create a sample EVENT lifecycle payload.
 
     Returns:

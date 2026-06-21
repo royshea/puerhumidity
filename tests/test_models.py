@@ -93,7 +93,7 @@ class TestSensorReading:
             "timestamp": "2026-01-17T12:00:00",
         }
 
-        reading = SensorReading.from_dict(data)
+        reading = SensorReading.from_dict(data)  # type: ignore[arg-type]
 
         assert reading.device_id == "device-123"
         assert reading.device_label == "TestSensor"
@@ -112,7 +112,7 @@ class TestSensorReading:
         }
 
         with pytest.raises(ValueError, match="Invalid reading_type"):
-            SensorReading.from_dict(data)
+            SensorReading.from_dict(data)  # type: ignore[arg-type]
 
     def test_reading_is_frozen(self) -> None:
         """Test that readings are immutable."""

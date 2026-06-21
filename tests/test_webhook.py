@@ -1,6 +1,7 @@
 """Tests for webhook routes."""
 
 import tempfile
+from typing import Any
 
 import pytest
 from flask import Flask
@@ -38,7 +39,7 @@ def storage_client(temp_storage_app: Flask) -> FlaskClient:
 class TestWebhookRoutes:
     """Tests for SmartThings webhook lifecycle handlers."""
 
-    def test_ping_lifecycle(self, client: FlaskClient, ping_payload: dict) -> None:
+    def test_ping_lifecycle(self, client: FlaskClient, ping_payload: dict[str, Any]) -> None:
         """Test PING lifecycle returns challenge."""
         response = client.post("/webhook", json=ping_payload)
 
@@ -52,14 +53,18 @@ class TestWebhookRoutes:
         response = client.post("/webhook", json=payload)
 
         assert response.status_code == 200
-        assert response.json["pingData"]["challenge"] == "unique-challenge-abc"
+        json_data = response.json
+        assert json_data is not None
+        assert json_data["pingData"]["challenge"] == "unique-challenge-abc"
 
-    def test_event_lifecycle(self, client: FlaskClient, event_payload: dict) -> None:
+    def test_event_lifecycle(self, client: FlaskClient, event_payload: dict[str, Any]) -> None:
         """Test EVENT lifecycle is accepted."""
         response = client.post("/webhook", json=event_payload)
 
         assert response.status_code == 200
-        assert "eventData" in response.json
+        json_data = response.json
+        assert json_data is not None
+        assert "eventData" in json_data
 
     def test_install_lifecycle(self, client: FlaskClient) -> None:
         """Test INSTALL lifecycle is accepted."""
@@ -78,7 +83,9 @@ class TestWebhookRoutes:
         response = client.post("/webhook", json=payload)
 
         assert response.status_code == 200
-        assert "installData" in response.json
+        json_data = response.json
+        assert json_data is not None
+        assert "installData" in json_data
 
     def test_update_lifecycle(self, client: FlaskClient) -> None:
         """Test UPDATE lifecycle is accepted."""
@@ -93,7 +100,9 @@ class TestWebhookRoutes:
         response = client.post("/webhook", json=payload)
 
         assert response.status_code == 200
-        assert "updateData" in response.json
+        json_data = response.json
+        assert json_data is not None
+        assert "updateData" in json_data
 
     def test_uninstall_lifecycle(self, client: FlaskClient) -> None:
         """Test UNINSTALL lifecycle is accepted."""
@@ -102,7 +111,9 @@ class TestWebhookRoutes:
         response = client.post("/webhook", json=payload)
 
         assert response.status_code == 200
-        assert "uninstallData" in response.json
+        json_data = response.json
+        assert json_data is not None
+        assert "uninstallData" in json_data
 
     def test_unknown_lifecycle(self, client: FlaskClient) -> None:
         """Test unknown lifecycle returns 400."""
@@ -111,7 +122,9 @@ class TestWebhookRoutes:
         response = client.post("/webhook", json=payload)
 
         assert response.status_code == 400
-        assert "error" in response.json
+        json_data = response.json
+        assert json_data is not None
+        assert "error" in json_data
 
     def test_missing_json_payload(self, client: FlaskClient) -> None:
         """Test request without JSON returns 415 (Unsupported Media Type)."""

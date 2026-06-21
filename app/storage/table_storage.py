@@ -297,7 +297,7 @@ class TableStorage(StorageBase):
         return SensorReading(
             device_id=str(entity["device_id"]),
             device_label=str(entity["device_label"]),
-            reading_type=reading_type,  # type: ignore[arg-type]
+            reading_type=reading_type,
             value=float(entity["value"]),  # type: ignore[arg-type]
             timestamp=timestamp,
         )
