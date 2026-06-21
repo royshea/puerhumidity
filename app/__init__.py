@@ -40,7 +40,10 @@ def create_app(config_name: str | None = None) -> Flask:
     app.logger.setLevel(logging.INFO)
     if not app.logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        handler.setFormatter(formatter)
         app.logger.addHandler(handler)
 
     # Load configuration

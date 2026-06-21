@@ -1,7 +1,7 @@
 """SmartThings webhook lifecycle handlers."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request
@@ -95,9 +95,9 @@ def _handle_configuration(data: dict[str, Any]) -> ResponseReturnValue:
     """
     config_data = data.get("configurationData", {})
     phase = config_data.get("phase")
-    
+
     logger.info(f"CONFIGURATION phase: {phase}")
-    
+
     if phase == "INITIALIZE":
         # Return app info and indicate we have a single page
         # These permissions are required for CAPABILITY subscriptions:
@@ -288,7 +288,7 @@ def _parse_device_event(
         device_label=device_label,
         reading_type=reading_type,  # type: ignore[arg-type]
         value=float(value),
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
 
 

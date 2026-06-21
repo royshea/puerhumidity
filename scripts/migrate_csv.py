@@ -10,24 +10,24 @@ Usage:
 
 Environment variables required:
     AZURE_STORAGE_CONNECTION_STRING - Azure Storage connection string
-    
+
 Or set in .env file.
 """
 
 import csv
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Add project root to path for imports
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
-from app.models import SensorReading
-from app.storage.table_storage import TableStorage
+from app.models import SensorReading  # noqa: E402
+from app.storage.table_storage import TableStorage  # noqa: E402
 
 
 def load_readings_from_csv(csv_path: Path) -> list[SensorReading]:
@@ -41,7 +41,7 @@ def load_readings_from_csv(csv_path: Path) -> list[SensorReading]:
     """
     readings: list[SensorReading] = []
 
-    with open(csv_path, "r", newline="", encoding="utf-8") as f:
+    with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             # Parse timestamp - add UTC timezone if missing
@@ -49,7 +49,7 @@ def load_readings_from_csv(csv_path: Path) -> list[SensorReading]:
             try:
                 timestamp = datetime.fromisoformat(timestamp_str)
                 if timestamp.tzinfo is None:
-                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+                    timestamp = timestamp.replace(tzinfo=UTC)
             except ValueError as e:
                 print(f"Skipping row with invalid timestamp: {timestamp_str} - {e}")
                 continue
@@ -119,7 +119,7 @@ def main() -> int:
     print("Writing readings to Azure Table Storage...")
     written_count = storage.write_readings(readings)
 
-    print(f"\nMigration complete!")
+    print("\nMigration complete!")
     print(f"  Total readings in CSV: {len(readings)}")
     print(f"  Successfully written:  {written_count}")
 

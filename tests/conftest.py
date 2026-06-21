@@ -1,7 +1,7 @@
 """Pytest fixtures for PuerHumidity tests."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Generator
+from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from flask import Flask
@@ -49,7 +49,7 @@ def sample_reading() -> SensorReading:
         device_label="PuerHumidity",
         reading_type="humidity",
         value=65.0,
-        timestamp=datetime(2026, 1, 17, 12, 0, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 1, 17, 12, 0, 0, tzinfo=UTC),
     )
 
 
@@ -89,7 +89,7 @@ def sample_readings() -> list[SensorReading]:
 
 
 @pytest.fixture
-def ping_payload() -> dict:
+def ping_payload() -> dict[str, object]:
     """Create a sample PING lifecycle payload.
 
     Returns:
@@ -99,7 +99,7 @@ def ping_payload() -> dict:
 
 
 @pytest.fixture
-def event_payload() -> dict:
+def event_payload() -> dict[str, object]:
     """Create a sample EVENT lifecycle payload.
 
     Returns:

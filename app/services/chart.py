@@ -11,7 +11,6 @@ from plotly.subplots import make_subplots
 from app.models import SensorReading
 from app.services.data_transform import forward_fill_to_timeseries, sliding_average
 
-
 # Color scheme for chart traces
 COLORS = {
     "temperature": {
@@ -69,7 +68,7 @@ def generate_chart(
             x=0.5,
             y=0.5,
             showarrow=False,
-            font=dict(size=20),
+            font={"size": 20},
         )
     else:
         if display_mode == "raw":
@@ -95,14 +94,14 @@ def generate_chart(
     fig.update_layout(
         height=height,
         hovermode="x unified",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-        ),
-        margin=dict(l=50, r=50, t=50, b=50),
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
+        },
+        margin={"l": 50, "r": 50, "t": 50, "b": 50},
     )
 
     # Return as HTML div
@@ -148,15 +147,15 @@ def _add_traces(
         if trace_type == "raw":
             mode = "markers"
             line_config = None
-            marker_config = dict(size=4, color=color)
+            marker_config = {"size": 4, "color": color}
         elif trace_type == "resampled":
             # Step line for forward-filled data (shows holds)
             mode = "lines"
-            line_config = dict(color=color, width=1, shape="hv")  # horizontal-vertical steps
+            line_config = {"color": color, "width": 1, "shape": "hv"}
             marker_config = None
         else:  # smoothed
             mode = "lines"
-            line_config = dict(color=color, width=2)
+            line_config = {"color": color, "width": 2}
             marker_config = None
 
         # Temperature on primary y-axis, humidity on secondary

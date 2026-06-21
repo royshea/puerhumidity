@@ -1,6 +1,6 @@
 """Tests for data models."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -85,7 +85,7 @@ class TestSensorReading:
 
     def test_from_dict(self) -> None:
         """Test creating reading from dictionary."""
-        data = {
+        data: dict[str, str | float] = {
             "device_id": "device-123",
             "device_label": "TestSensor",
             "reading_type": "humidity",
@@ -99,11 +99,11 @@ class TestSensorReading:
         assert reading.device_label == "TestSensor"
         assert reading.reading_type == "humidity"
         assert reading.value == 65.5
-        assert reading.timestamp == datetime(2026, 1, 17, 12, 0, 0, tzinfo=timezone.utc)
+        assert reading.timestamp == datetime(2026, 1, 17, 12, 0, 0, tzinfo=UTC)
 
     def test_from_dict_invalid_reading_type(self) -> None:
         """Test that invalid reading_type raises ValueError."""
-        data = {
+        data: dict[str, str | float] = {
             "device_id": "device-123",
             "device_label": "TestSensor",
             "reading_type": "invalid",

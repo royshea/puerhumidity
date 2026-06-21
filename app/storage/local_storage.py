@@ -1,8 +1,7 @@
 """Local CSV-backed storage implementation for development and testing."""
 
 import csv
-import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Lock
 
@@ -49,18 +48,17 @@ class LocalStorage(StorageBase):
         Args:
             reading: The sensor reading to store.
         """
-        with self._lock:
-            with open(self.file_path, "a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(
-                    [
-                        reading.device_id,
-                        reading.device_label,
-                        reading.reading_type,
-                        reading.value,
-                        reading.timestamp.isoformat(),
-                    ]
-                )
+        with self._lock, open(self.file_path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    reading.device_id,
+                    reading.device_label,
+                    reading.reading_type,
+                    reading.value,
+                    reading.timestamp.isoformat(),
+                ]
+            )
 
     def write_readings(self, readings: list[SensorReading]) -> int:
         """Write multiple sensor readings to the CSV file.
@@ -71,19 +69,18 @@ class LocalStorage(StorageBase):
         Returns:
             Number of readings written.
         """
-        with self._lock:
-            with open(self.file_path, "a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                for reading in readings:
-                    writer.writerow(
-                        [
-                            reading.device_id,
-                            reading.device_label,
-                            reading.reading_type,
-                            reading.value,
-                            reading.timestamp.isoformat(),
-                        ]
-                    )
+        with self._lock, open(self.file_path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for reading in readings:
+                writer.writerow(
+                    [
+                        reading.device_id,
+                        reading.device_label,
+                        reading.reading_type,
+                        reading.value,
+                        reading.timestamp.isoformat(),
+                    ]
+                )
         return len(readings)
 
     def _read_all_from_file(self) -> list[SensorReading]:
@@ -94,12 +91,11 @@ class LocalStorage(StorageBase):
         """
         readings: list[SensorReading] = []
 
-        with self._lock:
-            with open(self.file_path, "r", newline="", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    reading = SensorReading.from_dict(row)
-                    readings.append(reading)
+        with self._lock, open(self.file_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                reading = SensorReading.from_dict(row)
+                readings.append(reading)
 
         return readings
 
@@ -113,7 +109,7 @@ class LocalStorage(StorageBase):
         Returns:
             List of sensor readings, sorted by timestamp ascending.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         all_readings = self._read_all_from_file()
 
         filtered = [
@@ -133,7 +129,7 @@ class LocalStorage(StorageBase):
         Returns:
             List of all sensor readings, sorted by timestamp ascending.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         all_readings = self._read_all_from_file()
 
         filtered = [r for r in all_readings if self._is_after_cutoff(r.timestamp, cutoff)]
@@ -170,5 +166,5 @@ class LocalStorage(StorageBase):
         """
         # Make timestamp timezone-aware if it isn't
         if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
+            timestamp = timestamp.replace(tzinfo=UTC)
         return timestamp >= cutoff
