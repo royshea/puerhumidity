@@ -1,6 +1,6 @@
 # Production dependencies for PuerHumidity v2
 Flask>=3.1.3
-azure-data-tables>=12.5.0
+azure-data-tables>=12.7.0
 azure-identity>=1.17.0
 azure-monitor-opentelemetry>=1.6.0
 plotly>=6.8.0
