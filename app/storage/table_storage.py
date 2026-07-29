@@ -1,6 +1,7 @@
 """Azure Table Storage backend implementation."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from azure.core.exceptions import ResourceNotFoundError
 from azure.data.tables import TableClient, TableServiceClient
@@ -290,14 +291,18 @@ class TableStorage(StorageBase):
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
 
-        reading_type = entity["reading_type"]
-        if reading_type not in ("temperature", "humidity"):
-            raise ValueError(f"Invalid reading_type: {reading_type}")
+        raw_reading_type = entity["reading_type"]
+        if raw_reading_type == "temperature":
+            reading_type: Literal["temperature", "humidity"] = "temperature"
+        elif raw_reading_type == "humidity":
+            reading_type = "humidity"
+        else:
+            raise ValueError(f"Invalid reading_type: {raw_reading_type}")
 
         return SensorReading(
             device_id=str(entity["device_id"]),
             device_label=str(entity["device_label"]),
-            reading_type=reading_type,  # type: ignore[arg-type]
+            reading_type=reading_type,
             value=float(entity["value"]),  # type: ignore[arg-type]
             timestamp=timestamp,
         )
