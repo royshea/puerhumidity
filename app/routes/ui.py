@@ -1,5 +1,7 @@
 """UI routes for chart display."""
 
+from datetime import UTC
+
 from flask import Blueprint, render_template, request
 
 from app.models import SensorReading
@@ -38,7 +40,7 @@ def _build_latest_summary(readings: list[SensorReading]) -> list[dict[str, str]]
                 "device_label": reading.device_label,
                 "reading_type": reading.reading_type.capitalize(),
                 "value": f"{reading.value:g}{unit}",
-                "timestamp": reading.timestamp.strftime("%Y-%m-%d %H:%M UTC"),
+                "timestamp": reading.timestamp.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC"),
             }
         )
 
