@@ -1,5 +1,6 @@
 """Tests for storage backends."""
 
+import socket
 import tempfile
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -14,6 +15,15 @@ from app.storage.local_storage import LocalStorage
 
 if TYPE_CHECKING:
     from app.storage.table_storage import TableStorage
+
+
+def _azurite_table_endpoint_available() -> bool:
+    """Return whether the local Azurite Table endpoint is accepting connections."""
+    try:
+        with socket.create_connection(("127.0.0.1", 10002), timeout=0.5):
+            return True
+    except OSError:
+        return False
 
 
 class TestLocalStorage:
@@ -308,6 +318,9 @@ class TestTableStorage:
         import uuid
 
         from app.storage.table_storage import TableStorage
+
+        if not _azurite_table_endpoint_available():
+            pytest.skip("Azurite not available - skipping Table Storage tests")
 
         table_name = f"test{uuid.uuid4().hex[:8]}"
 
