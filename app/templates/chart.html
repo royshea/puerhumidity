@@ -4,6 +4,23 @@
 
 {% block content %}
 <div class="card">
+    <h2>Latest Readings</h2>
+    {% if latest_readings %}
+    <div class="sensor-grid">
+        {% for sensor in latest_readings %}
+        <div class="sensor-card">
+            <div class="sensor-name">{{ sensor.device_label }} · {{ sensor.reading_type }}</div>
+            <div class="sensor-value">{{ sensor.value }}</div>
+            <div class="sensor-time">{{ sensor.timestamp }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color: var(--secondary-color);">No sensor readings available in the selected time range.</p>
+    {% endif %}
+</div>
+
+<div class="card">
     <h2>Humidity & Temperature</h2>
     
     <form method="get" action="{{ url_for('ui.chart') }}" class="controls">
