@@ -132,6 +132,39 @@
             min-height: 500px;
         }
 
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+        }
+
+        .sensor-card {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            background-color: var(--bg-color);
+        }
+
+        .sensor-name {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--secondary-color);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .sensor-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin: 0.25rem 0;
+        }
+
+        .sensor-time {
+            font-size: 0.8125rem;
+            color: var(--secondary-color);
+        }
+
         .flash {
             padding: 1rem;
             border-radius: 6px;
