@@ -1,11 +1,50 @@
 """UI routes for chart display."""
 
+from datetime import UTC
+
 from flask import Blueprint, render_template, request
 
+from app.models import SensorReading
 from app.services import generate_chart
 from app.storage import get_storage
 
 ui_bp = Blueprint("ui", __name__)
+
+# Units to display alongside each reading type.
+_READING_UNITS: dict[str, str] = {"temperature": "°F", "humidity": "%"}
+
+
+def _build_latest_summary(readings: list[SensorReading]) -> list[dict[str, str]]:
+    """Compute the latest reading per sensor for the summary section.
+
+    Args:
+        readings: Readings within the current time window (sorted ascending).
+
+    Returns:
+        One entry per sensor (e.g. "PuerHumidity-Humidity"), each with a
+        human-friendly label, formatted value, and reading time. Sorted by
+        device label then reading type for a stable display order.
+    """
+    latest_by_sensor: dict[str, SensorReading] = {}
+    for reading in readings:
+        current = latest_by_sensor.get(reading.sensor_name)
+        if current is None or reading.timestamp > current.timestamp:
+            latest_by_sensor[reading.sensor_name] = reading
+
+    summary: list[dict[str, str]] = []
+    for reading in latest_by_sensor.values():
+        unit = _READING_UNITS.get(reading.reading_type, "")
+        summary.append(
+            {
+                "sensor_name": reading.sensor_name,
+                "device_label": reading.device_label,
+                "reading_type": reading.reading_type.capitalize(),
+                "value": f"{reading.value:g}{unit}",
+                "timestamp": reading.timestamp.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+            }
+        )
+
+    return sorted(summary, key=lambda s: (s["device_label"], s["reading_type"]))
 
 
 @ui_bp.route("/")
@@ -54,6 +93,9 @@ def chart() -> str:
     storage = get_storage()
     readings = storage.get_all_readings(hours=hours_int)
 
+    # Latest value + time per sensor for the summary section
+    latest_readings = _build_latest_summary(readings)
+
     # Generate chart HTML
     chart_html = generate_chart(
         readings,
@@ -65,6 +107,7 @@ def chart() -> str:
     return render_template(
         "chart.html",
         chart_html=chart_html,
+        latest_readings=latest_readings,
         mode=mode,
         hours=hours_int,
         resolution=resolution_int,
