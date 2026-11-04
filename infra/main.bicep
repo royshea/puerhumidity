@@ -38,7 +38,9 @@ module webApp 'modules/web-app.bicep' = {
     location: location
     appServicePlanId: appServicePlan.id
     linuxFxVersion: 'PYTHON|3.13'
-    startupCommand: 'gunicorn --bind=0.0.0.0 --timeout 600 app:application'
+    // gthread lets /health answer while another request is blocked on storage.
+    // A 60s worker timeout bounds how long a hung request can hold a thread.
+    startupCommand: 'gunicorn --bind=0.0.0.0 --worker-class gthread --threads 4 --timeout 60 app:application'
     projectName: 'puerhumidity'
     alwaysOn: true
     healthCheckPath: '/health'
