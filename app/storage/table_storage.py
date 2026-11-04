@@ -10,6 +10,12 @@ from azure.identity import DefaultAzureCredential
 from app.models import SensorReading
 from app.storage.base import StorageBase
 
+# Fail fast instead of hanging a request for a minute or more when the storage
+# endpoint stalls. Applied to every Table Storage call via the client pipeline.
+_CONNECTION_TIMEOUT_S = 5
+_READ_TIMEOUT_S = 15
+_RETRY_TOTAL = 2
+
 
 class TableStorage(StorageBase):
     """Azure Table Storage backend for production use.
@@ -63,9 +69,18 @@ class TableStorage(StorageBase):
         """Create a TableServiceClient using the configured auth method."""
         if self._account_url:
             return TableServiceClient(
-                endpoint=self._account_url, credential=DefaultAzureCredential()
+                endpoint=self._account_url,
+                credential=DefaultAzureCredential(),
+                connection_timeout=_CONNECTION_TIMEOUT_S,
+                read_timeout=_READ_TIMEOUT_S,
+                retry_total=_RETRY_TOTAL,
             )
-        return TableServiceClient.from_connection_string(self._connection_string)  # type: ignore[arg-type]
+        return TableServiceClient.from_connection_string(
+            self._connection_string,  # type: ignore[arg-type]
+            connection_timeout=_CONNECTION_TIMEOUT_S,
+            read_timeout=_READ_TIMEOUT_S,
+            retry_total=_RETRY_TOTAL,
+        )
 
     def _get_table_client(self) -> TableClient:
         """Get or create the table client.

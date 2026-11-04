@@ -5,6 +5,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # Pinned to 1.8.8 while testing whether 1.8.9 causes the outbound
+      # timeouts seen on 2026-11-03. Remove once that's settled.
+      - dependency-name: "azure-monitor-opentelemetry"
+        versions: ["1.8.9"]
 
   # GitHub Actions versions
   - package-ecosystem: "github-actions"
