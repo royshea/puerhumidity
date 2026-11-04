@@ -39,7 +39,9 @@ module webApp 'modules/web-app.bicep' = {
     appServicePlanId: appServicePlan.id
     linuxFxVersion: 'PYTHON|3.13'
     // gthread lets /health answer while another request is blocked on storage.
-    // A 60s worker timeout bounds how long a hung request can hold a thread.
+    // With gthread, --timeout only restarts a worker whose main loop stops
+    // responding; it does not cut off a hung request thread. The storage
+    // client timeouts in app/storage/table_storage.py bound those instead.
     startupCommand: 'gunicorn --bind=0.0.0.0 --worker-class gthread --threads 4 --timeout 60 app:application'
     projectName: 'puerhumidity'
     alwaysOn: true
