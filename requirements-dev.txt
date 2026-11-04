@@ -12,4 +12,4 @@ mypy>=2.1.0
 ruff>=0.16.0
 
 # Type stubs
-types-requests>=2.33.0.20260712
+types-requests>=2.33.0.20261030
