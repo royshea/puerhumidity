@@ -49,4 +49,5 @@ SmartThings pushes device events to `POST /webhook`; `GET /` reads them back and
 
 - `deploy-app.yml` runs after CI succeeds on `main`, and skips when the latest commit only touches `infra/`, `docs/`, or `*.md`. It ends with a smoke test against `/health`.
 - `deploy-infra.yml` runs on pushes to `main` that touch `infra/**`. It deliberately fails if any changed file path contains "rbac", because the CI service principal cannot create role assignments. Deploy those manually with `deployRbac=true` (see the README's RBAC Bootstrap section).
+- Both deploy workflows share the `deploy-puerhumidity` concurrency group, so they queue rather than overlap. Don't remove it from either: an infra deploy that touches site config restarts the app, and if that lands mid zip-deploy the container boots from a half-written `wwwroot` and fails.
 - Infrastructure lives in `infra/` and targets shared resources in `rg-shared-platform`. `SECRET_KEY` is set by hand on the web app, not in Bicep.
