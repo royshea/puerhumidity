@@ -14,9 +14,13 @@ env:
   AZURE_WEBAPP_NAME: 'app-puerhumidity'
   PYTHON_VERSION: '3.13'
 
+# Shared with deploy-infra.yml so the two never overlap. An infra deploy that
+# changes site config restarts the app; if that happens mid zip-deploy the
+# container boots from a half-written wwwroot and fails ("No module named
+# 'app'"). Runs queue instead of cancelling, so an in-flight deploy finishes.
 concurrency:
-  group: deploy-app
-  cancel-in-progress: true
+  group: deploy-puerhumidity
+  cancel-in-progress: false
 
 jobs:
   check-changes:

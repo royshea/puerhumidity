@@ -1,4 +1,4 @@
-// Metric alerts for the puerHumidity web app.
+// Metric and log alerts for the puerHumidity web app.
 // Requires a shared Action Group (created in commonAzureInfra) to exist.
 
 @description('Name of the web app (used for alert naming)')
@@ -51,34 +51,47 @@ resource http5xxAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   }
 }
 
-// Alert: Slow response time
-// Severity 3 (Informational) — fires when average response exceeds 5 seconds.
-resource responseTimeAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
-  name: 'alert-${webAppName}-slow-response'
-  location: 'global'
+// Alert: Sustained slow responses (log-based, requires Application Insights)
+// Severity 3 (Informational) — fires when the app's average request duration stays above
+// 5 seconds for 15 minutes (3 consecutive 5-minute windows).
+//
+// This replaced a platform-metric alert (HttpResponseTime average > 5s over 5 minutes). On a
+// single-instance plan every host move or deploy is a 1.5-3 minute cold start, and with ~1
+// request/minute one queued request pushed the 5-minute average over the threshold, so the old
+// alert fired on every restart. App Insights measures time inside the app, so cold-start
+// queueing doesn't count here; outages are covered by the health check alert instead.
+// /health is excluded so the platform probe (~1/minute, ~1ms) doesn't dilute the average.
+resource slowResponseAlert 'Microsoft.Insights/scheduledQueryRules@2022-06-15' = if (!empty(appInsightsId)) {
+  name: 'alert-${webAppName}-sustained-slow-response'
+  location: location
   properties: {
-    description: 'Average response time exceeds 5 seconds over a 5-minute window'
+    displayName: 'Sustained slow responses'
+    description: 'Average request duration above 5 seconds for 15 minutes (3 consecutive 5-minute windows), excluding /health.'
     severity: 3
     enabled: true
-    scopes: [webAppResourceId]
+    scopes: [appInsightsId]
+    targetResourceTypes: ['Microsoft.Insights/components']
     evaluationFrequency: 'PT5M'
     windowSize: 'PT5M'
     criteria: {
       allOf: [
         {
-          criterionType: 'StaticThresholdCriterion'
-          name: 'ResponseTime'
-          metricName: 'HttpResponseTime'
-          metricNamespace: 'Microsoft.Web/sites'
-          operator: 'GreaterThan'
-          threshold: 5
+          query: 'requests | where cloud_RoleName == "${webAppName}" and name != "GET /health"'
           timeAggregation: 'Average'
+          metricMeasureColumn: 'duration'
+          operator: 'GreaterThan'
+          threshold: 5000
+          failingPeriods: {
+            numberOfEvaluationPeriods: 3
+            minFailingPeriodsToAlert: 3
+          }
         }
       ]
-      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
     }
     autoMitigate: true
-    actions: [{ actionGroupId: actionGroup.id }]
+    actions: {
+      actionGroups: [actionGroup.id]
+    }
   }
 }
 

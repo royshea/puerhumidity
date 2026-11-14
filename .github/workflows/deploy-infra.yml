@@ -11,6 +11,11 @@ permissions:
   id-token: write
   contents: read
 
+# Shared with deploy-app.yml; see the comment there.
+concurrency:
+  group: deploy-puerhumidity
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
