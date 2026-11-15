@@ -7,4 +7,4 @@ plotly>=6.9.0
 pandas>=3.0.5
 requests>=2.34.2
 python-dotenv>=1.2.4
-gunicorn>=26.0.0
+gunicorn>=27.0.0
